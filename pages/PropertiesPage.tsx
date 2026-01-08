@@ -320,6 +320,19 @@ Interested? Let me know!`
 };
 
 const PropertyComparisonModal: React.FC<{ selectedProperties: Property[], onClose: () => void }> = ({ selectedProperties, onClose }) => {
+  const handleShareComparison = () => {
+    let message = `🏠 *Property Comparison Report*\n\n`;
+    selectedProperties.forEach((p, idx) => {
+      message += `*${idx + 1}. ${p.title}*\n`;
+      message += `📍 Area: ${p.location.area}\n`;
+      message += `💰 Range: ₹${(p.financials.priceMin/100000).toFixed(1)}L - ₹${(p.financials.priceMax/100000).toFixed(1)}L\n`;
+      message += `📐 Configs: ${p.configurations.map(c => c.bhk).join(', ')}\n`;
+      message += `🗓️ Possession: ${p.possessionDate || 'TBD'}\n`;
+      message += `-------------------\n`;
+    });
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[250] flex items-end sm:items-center justify-center p-0 sm:p-6">
       <div className="bg-white w-full max-w-6xl h-[95vh] sm:h-[85vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up">
@@ -367,7 +380,11 @@ const PropertyComparisonModal: React.FC<{ selectedProperties: Property[], onClos
 
         <div className="p-8 border-t bg-slate-50 shrink-0 flex gap-4">
           <button onClick={onClose} className="flex-1 py-5 btn-3d btn-3d-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest">Close View</button>
-          <button className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-100">
+          <button 
+            onClick={handleShareComparison}
+            className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 flex items-center justify-center gap-3"
+          >
+            <i className="fab fa-whatsapp text-lg"></i>
             Share Comparison Table
           </button>
         </div>

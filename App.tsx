@@ -66,7 +66,18 @@ const AppContent: React.FC = () => {
   const [visits, setVisits] = useState<SiteVisit[]>([
     {
       id: 'SV-001', clientId: 'CL-1001', clientName: 'Aakash Mehta', propertyId: 'P-1024',
-      propertyName: 'Sunrise Heights - Phase 2', scheduledAt: '2023-11-20T10:30:00', status: 'Scheduled'
+      propertyName: 'Sunrise Heights - Phase 2', scheduledAt: '2023-11-20T10:30:00', status: 'Scheduled',
+      history: [
+        { status: 'Scheduled', date: '2023-11-01T09:00:00', note: 'Initial booking through portal' }
+      ]
+    },
+    {
+      id: 'SV-002', clientId: 'CL-1001', clientName: 'Aakash Mehta', propertyId: 'P-1024',
+      propertyName: 'Sunrise Heights - Phase 2', scheduledAt: '2023-11-25T14:15:00', status: 'Rescheduled',
+      history: [
+        { status: 'Scheduled', date: '2023-11-05T10:00:00', note: 'Booked for 10th Nov' },
+        { status: 'Rescheduled', date: '2023-11-09T16:45:00', note: 'Client requested postponement due to work' }
+      ]
     }
   ]);
 
@@ -80,7 +91,11 @@ const AppContent: React.FC = () => {
   };
 
   const handleAddVisit = (newVisit: SiteVisit) => {
-    setVisits(prev => [newVisit, ...prev]);
+    const visitWithHistory = {
+      ...newVisit,
+      history: [{ status: 'Scheduled', date: new Date().toISOString(), note: 'Visit confirmed' }]
+    };
+    setVisits(prev => [visitWithHistory, ...prev]);
     setIsBookVisitOpen(false);
     alert('Site visit scheduled successfully!');
   };

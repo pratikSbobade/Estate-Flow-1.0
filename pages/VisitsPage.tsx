@@ -12,6 +12,7 @@ interface VisitsPageProps {
 const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVisit, onAddVisit }) => {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [activeModal, setActiveModal] = useState<{visit: SiteVisit, type: 'feedback' | 'reschedule' | 'cancel' | 'details'} | null>(null);
+  const [dayAgenda, setDayAgenda] = useState<{ date: string, visits: SiteVisit[] } | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const filteredVisits = visits.filter(v => 
@@ -22,7 +23,16 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
   const handleUpdateVisit = (visitId: string, updates: Partial<SiteVisit>) => {
     const visit = visits.find(v => v.id === visitId);
     if (visit) {
-      onUpdateVisit({ ...visit, ...updates });
+      const historyUpdate = {
+        status: updates.status || visit.status,
+        date: new Date().toISOString(),
+        note: (updates as any).reason || 'Status updated'
+      };
+      onUpdateVisit({ 
+        ...visit, 
+        ...updates,
+        history: [...(visit.history || []), historyUpdate]
+      });
     }
     setActiveModal(null);
   };
@@ -87,19 +97,22 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
               const isToday = day === new Date().getDate() && currentMonth.getMonth() === new Date().getMonth();
               
               return (
-                <div key={i} className={`aspect-square rounded-2xl relative border ${day ? 'border-slate-50 bg-white hover:border-indigo-200' : 'border-transparent bg-transparent'} transition-all`}>
+                <div 
+                  key={i} 
+                  onClick={() => day && dayVisits.length > 0 && setDayAgenda({ date: dateStr, visits: dayVisits })}
+                  className={`aspect-square rounded-2xl relative border cursor-pointer transition-all ${day ? 'border-slate-50 bg-white hover:border-indigo-200 hover:shadow-sm' : 'border-transparent bg-transparent'}`}
+                >
                   {day && (
                     <>
                       <span className={`absolute top-2 left-2 text-[10px] font-black ${isToday ? 'text-indigo-600' : 'text-slate-400'}`}>{day}</span>
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pt-4 px-1">
                         {dayVisits.slice(0, 2).map(v => (
-                          <button 
+                          <div 
                             key={v.id}
-                            onClick={() => setActiveModal({ visit: v, type: 'details' })}
-                            className={`w-full py-0.5 rounded-md text-[7px] font-black truncate px-1 text-white shadow-sm ${v.status === 'Completed' ? 'bg-emerald-500' : v.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'}`}
+                            className={`w-full py-0.5 rounded-md text-[6px] font-black truncate px-1 text-white shadow-sm text-center ${v.status === 'Completed' ? 'bg-emerald-500' : v.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'}`}
                           >
                             {v.clientName.split(' ')[0]}
-                          </button>
+                          </div>
                         ))}
                         {dayVisits.length > 2 && <span className="text-[7px] font-black text-slate-300">+{dayVisits.length - 2} more</span>}
                       </div>
@@ -124,15 +137,54 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
         </div>
       )}
 
+      {/* Day Agenda Modal */}
+      {dayAgenda && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[210] flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 animate-slide-up flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Day Agenda</h3>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(dayAgenda.date).toLocaleDateString([], { dateStyle: 'long' })}</p>
+              </div>
+              <button onClick={() => setDayAgenda(null)} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="overflow-y-auto space-y-4 pr-2 hide-scrollbar">
+              {dayAgenda.visits.map(v => (
+                <div 
+                  key={v.id} 
+                  onClick={() => { setDayAgenda(null); setActiveModal({ visit: v, type: 'details' }); }}
+                  className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 cursor-pointer transition-colors"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-[10px] font-black text-indigo-600 uppercase leading-none">
+                      {new Date(v.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-lg border uppercase ${
+                      v.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                    }`}>
+                      {v.status}
+                    </span>
+                  </div>
+                  <h4 className="font-black text-slate-800 text-sm uppercase leading-tight">{v.clientName}</h4>
+                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-1">{v.propertyName}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Action Modals */}
       {activeModal?.type === 'details' && (
         <VisitDetailsPopup visit={activeModal.visit} onClose={() => setActiveModal(null)} onAction={(type) => setActiveModal({visit: activeModal.visit, type})} />
       )}
       {activeModal?.type === 'reschedule' && (
-        <RescheduleModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onConfirm={(date) => handleUpdateVisit(activeModal.visit.id, { scheduledAt: date, status: 'Rescheduled' })} />
+        <RescheduleModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onConfirm={(date, reason) => handleUpdateVisit(activeModal.visit.id, { scheduledAt: date, status: 'Rescheduled', reason } as any)} />
       )}
       {activeModal?.type === 'cancel' && (
-        <CancelModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onConfirm={(reason) => handleUpdateVisit(activeModal.visit.id, { status: 'Cancelled' })} />
+        <CancelModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onConfirm={(reason) => handleUpdateVisit(activeModal.visit.id, { status: 'Cancelled', reason } as any)} />
       )}
       {activeModal?.type === 'feedback' && (
         <FeedbackModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onSubmit={(data) => handleUpdateVisit(activeModal.visit.id, { feedback: data, status: 'Completed' })} />
@@ -142,6 +194,7 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
 };
 
 const VisitCard: React.FC<{ visit: SiteVisit, onAction: (type: any) => void }> = ({ visit, onAction }) => {
+  const [showHistory, setShowHistory] = useState(false);
   const date = new Date(visit.scheduledAt);
   const statusColors = {
     Scheduled: 'bg-indigo-50 text-indigo-600 border-indigo-100',
@@ -151,35 +204,70 @@ const VisitCard: React.FC<{ visit: SiteVisit, onAction: (type: any) => void }> =
   };
 
   return (
-    <div className="card-neo rounded-[2.5rem] p-6 border border-slate-100 hover:shadow-xl transition-all">
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div className="flex gap-4">
-          <div className="w-16 h-16 bg-slate-50 rounded-2xl flex flex-col items-center justify-center shrink-0 border border-slate-100">
-            <span className="text-[10px] font-black text-indigo-600 uppercase leading-none mb-1">{date.toLocaleString('default', { month: 'short' })}</span>
-            <span className="text-2xl font-black text-slate-800 leading-none">{date.getDate()}</span>
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-3 mb-1">
-              <h3 className="font-black text-slate-800 text-lg uppercase tracking-tight truncate">{visit.clientName}</h3>
-              <span className={`px-2 py-0.5 rounded-lg border text-[8px] font-black uppercase ${statusColors[visit.status]}`}>
-                {visit.status}
-              </span>
+    <div className="card-neo rounded-[2.5rem] overflow-hidden border border-slate-100 hover:shadow-xl transition-all">
+      <div className="p-6">
+        <div className="flex flex-col sm:flex-row justify-between gap-4">
+          <div className="flex gap-4">
+            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex flex-col items-center justify-center shrink-0 border border-slate-100">
+              <span className="text-[10px] font-black text-indigo-600 uppercase leading-none mb-1">{date.toLocaleString('default', { month: 'short' })}</span>
+              <span className="text-2xl font-black text-slate-800 leading-none">{date.getDate()}</span>
             </div>
-            <p className="text-xs font-bold text-slate-500 flex items-center gap-2">
-              <i className="fas fa-building text-indigo-400"></i> {visit.propertyName}
-            </p>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2 flex items-center gap-2">
-              <i className="fas fa-clock"></i> {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-3 mb-1">
+                <h3 className="font-black text-slate-800 text-lg uppercase tracking-tight truncate">{visit.clientName}</h3>
+                <span className={`px-2 py-0.5 rounded-lg border text-[8px] font-black uppercase ${statusColors[visit.status]}`}>
+                  {visit.status}
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-500 flex items-center gap-2">
+                <i className="fas fa-building text-indigo-400"></i> {visit.propertyName}
+              </p>
+              <div className="flex items-center gap-4 mt-2">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <i className="fas fa-clock"></i> {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+                <button 
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
+                >
+                  {showHistory ? 'Hide History' : 'View History'}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-        
-        <div className="flex items-center gap-2 sm:self-start">
-          <button onClick={() => onAction('reschedule')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-white rounded-xl text-[9px] font-black uppercase tracking-widest">Reschedule</button>
-          <button onClick={() => onAction('cancel')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-red text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-red-100">Cancel</button>
-          <button onClick={() => onAction('feedback')} className="flex-1 sm:flex-none px-6 py-2.5 btn-3d btn-3d-indigo text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-indigo-100">Feedback</button>
+          
+          <div className="flex items-center gap-2 sm:self-start">
+            <button onClick={() => onAction('reschedule')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-white rounded-xl text-[9px] font-black uppercase tracking-widest">Reschedule</button>
+            <button onClick={() => onAction('cancel')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-red text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-red-100">Cancel</button>
+            <button onClick={() => onAction('feedback')} className="flex-1 sm:flex-none px-6 py-2.5 btn-3d btn-3d-indigo text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-indigo-100">Feedback</button>
+          </div>
         </div>
       </div>
+
+      {showHistory && (
+        <div className="px-6 pb-6 bg-slate-50/50 border-t border-slate-50 animate-slide-up pt-4">
+          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Visit Timeline</h4>
+          <div className="space-y-4">
+            {(visit.history || [{ status: 'Scheduled', date: visit.scheduledAt, note: 'Initial Appointment' }]).map((h, i) => (
+              <div key={i} className="flex gap-4">
+                <div className="flex flex-col items-center">
+                  <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm mt-1 shrink-0 ${
+                    h.status === 'Completed' ? 'bg-emerald-500' : h.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'
+                  }`}></div>
+                  {i < (visit.history?.length || 0) && <div className="w-[1px] flex-grow bg-slate-200 my-1"></div>}
+                </div>
+                <div className="min-w-0 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-700 uppercase">{h.status}</span>
+                    <span className="text-[8px] font-bold text-slate-400">{new Date(h.date).toLocaleDateString()}</span>
+                  </div>
+                  {h.note && <p className="text-[10px] text-slate-500 font-medium italic mt-0.5 line-clamp-1">{h.note}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -217,8 +305,8 @@ const VisitDetailsPopup: React.FC<{ visit: SiteVisit, onClose: () => void, onAct
   </div>
 );
 
-const RescheduleModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfirm: (date: string) => void }> = ({ visit, onClose, onConfirm }) => {
-  const [date, setDate] = useState(visit.scheduledAt.split(':')[0] + ':' + visit.scheduledAt.split(':')[1]);
+const RescheduleModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfirm: (date: string, reason: string) => void }> = ({ visit, onClose, onConfirm }) => {
+  const [date, setDate] = useState(visit.scheduledAt.split(':')[0] + ':' + (visit.scheduledAt.split(':')[1] || '00'));
   const [reason, setReason] = useState('');
 
   return (
@@ -237,7 +325,7 @@ const RescheduleModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfi
         </div>
         <div className="flex gap-4">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase">Back</button>
-          <button onClick={() => onConfirm(date)} className="flex-1 py-4 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase">Confirm</button>
+          <button onClick={() => onConfirm(date, reason)} className="flex-1 py-4 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase">Confirm</button>
         </div>
       </div>
     </div>

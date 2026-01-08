@@ -44,6 +44,12 @@ export interface Client {
   createdAt: string;
 }
 
+export interface SiteVisitHistory {
+  status: string;
+  date: string;
+  note?: string;
+}
+
 export interface SiteVisit {
   id: string;
   clientId: string;
@@ -52,6 +58,7 @@ export interface SiteVisit {
   propertyName: string;
   scheduledAt: string;
   status: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
+  history?: SiteVisitHistory[];
   feedback?: {
     notes: string;
     outcome: string;
