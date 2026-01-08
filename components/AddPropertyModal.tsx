@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Property, PropertyConfiguration } from '../types';
 
 interface AddPropertyModalProps {
+  initialData?: Property;
   onClose: () => void;
   onSubmit: (property: Property) => void;
 }
@@ -19,12 +20,12 @@ const SECTIONS = [
   { id: 'source', label: '9. Source' }
 ];
 
-const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ onClose, onSubmit }) => {
+const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClose, onSubmit }) => {
   const [activeTab, setActiveTab] = useState('basic');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
 
-  const [formData, setFormData] = useState<Partial<Property>>({
+  const [formData, setFormData] = useState<Partial<Property>>(initialData || {
     id: `P-${Math.floor(1000 + Math.random() * 9000)}`,
     title: '',
     description: '',
@@ -126,7 +127,9 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ onClose, onSubmit }
       <div className="bg-white w-full max-w-5xl h-[95vh] sm:h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up">
         <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-white shrink-0">
           <div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase tracking-widest">Add New Property</h2>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase tracking-widest">
+              {initialData ? 'Edit Property' : 'Add New Property'}
+            </h2>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Listing ID: {formData.id}</p>
           </div>
           <button onClick={onClose} className="w-12 h-12 btn-3d btn-3d-white rounded-2xl flex items-center justify-center text-slate-400">
@@ -307,7 +310,9 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ onClose, onSubmit }
 
         <div className="p-8 border-t bg-slate-50 flex gap-4 shrink-0">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white font-black text-[10px] uppercase rounded-2xl">Discard</button>
-          <button onClick={handleSubmit} className="flex-[2] py-4 btn-3d btn-3d-indigo text-white font-black text-[10px] uppercase rounded-2xl">Save Property</button>
+          <button onClick={handleSubmit} className="flex-[2] py-4 btn-3d btn-3d-indigo text-white font-black text-[10px] uppercase rounded-2xl">
+            {initialData ? 'Update Property' : 'Save Property'}
+          </button>
         </div>
       </div>
     </div>
