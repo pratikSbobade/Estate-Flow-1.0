@@ -4,13 +4,52 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   LineChart, Line, AreaChart, Area 
 } from 'recharts';
+import { Client, Property, SiteVisit } from '../types';
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+  clients: Client[];
+  properties: Property[];
+  visits: SiteVisit[];
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) => {
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  const visitsToday = visits.filter(v => v.scheduledAt.startsWith(todayDateStr)).length;
+  const completedVisits = visits.filter(v => v.status === 'Completed').length;
+  
+  const totalRevenue = properties
+    .filter(p => p.status === 'Sold')
+    .reduce((sum, p) => sum + (p.financials.priceMin || 0), 0);
+
   const stats = [
-    { label: 'Total Properties', value: '142', sub: '12 new this month', icon: 'fa-building', color: 'indigo' },
-    { label: 'Active Listings', value: '86', sub: '61% efficiency', icon: 'fa-check-circle', color: 'emerald' },
-    { label: 'Revenue Generated', value: '₹2.4Cr', sub: 'Payout pending: ₹12L', icon: 'fa-coins', color: 'amber' },
-    { label: 'Visits Today', value: '08', sub: '4 completed', icon: 'fa-calendar-day', color: 'purple' },
+    { 
+      label: 'Total Properties', 
+      value: properties.length.toString(), 
+      sub: `${properties.filter(p => p.listingType === 'Pre-launch').length} Pre-launch`, 
+      icon: 'fa-building', 
+      color: 'indigo' 
+    },
+    { 
+      label: 'Active Listings', 
+      value: properties.filter(p => p.status === 'Available').length.toString(), 
+      sub: `${Math.round((properties.filter(p => p.status === 'Available').length / (properties.length || 1)) * 100)}% Available`, 
+      icon: 'fa-check-circle', 
+      color: 'emerald' 
+    },
+    { 
+      label: 'Revenue Generated', 
+      value: `₹${(totalRevenue / 10000000).toFixed(2)}Cr`, 
+      sub: `Based on closed sales`, 
+      icon: 'fa-coins', 
+      color: 'amber' 
+    },
+    { 
+      label: 'Visits Today', 
+      value: visitsToday.toString().padStart(2, '0'), 
+      sub: `${completedVisits} total completed`, 
+      icon: 'fa-calendar-day', 
+      color: 'purple' 
+    },
   ];
 
   const chartData = [
@@ -23,11 +62,16 @@ const Dashboard: React.FC = () => {
     { name: 'Sun', visits: 10, conversion: 5 },
   ];
 
-  const reminders = [
-    { type: 'Site Visit', client: 'Rohit Sharma', time: '10:30 AM', property: 'Godrej Prime 3BHK' },
-    { type: 'Follow-up', client: 'Priya Verma', time: '02:00 PM', property: 'Villas at Nagpur' },
-    { type: 'Pending', client: 'Unknown Lead', time: 'Overdue', property: 'Cold Call', urgent: true },
-  ];
+  const reminders = visits
+    .filter(v => v.status === 'Scheduled')
+    .slice(0, 3)
+    .map(v => ({
+      type: 'Site Visit',
+      client: v.clientName,
+      time: new Date(v.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      property: v.propertyName,
+      urgent: v.scheduledAt.startsWith(todayDateStr)
+    }));
 
   return (
     <div className="space-y-10">
@@ -103,7 +147,7 @@ const Dashboard: React.FC = () => {
         {/* Reminders Sidebar */}
         <div className="card-neo p-8 rounded-[2.5rem] bg-slate-900 text-white">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-xl font-black tracking-tight">Today's Focus</h2>
+            <h2 className="text-xl font-black tracking-tight">Upcoming Visits</h2>
             <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
               <i className="fas fa-bell animate-swing"></i>
             </div>
@@ -133,6 +177,11 @@ const Dashboard: React.FC = () => {
                 )}
               </div>
             ))}
+            {reminders.length === 0 && (
+              <div className="text-center py-10">
+                <p className="text-white/30 text-xs font-bold uppercase tracking-widest">No scheduled visits</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
