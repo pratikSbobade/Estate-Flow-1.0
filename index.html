@@ -1,0 +1,143 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estate Flow CRM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com" rel="preconnect"/>
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <style>
+      body {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        background-color: #f1f5f9;
+        overflow-x: hidden;
+      }
+      /* Generic 3D Button Base */
+      .btn-3d {
+        transition: transform 0.1s ease, box-shadow 0.1s ease;
+        position: relative;
+      }
+      .btn-3d:hover {
+        transform: translateY(-2px);
+      }
+      .btn-3d:active {
+        transform: translateY(2px);
+      }
+
+      /* Indigo 3D */
+      .btn-3d-indigo {
+        background-color: #4f46e5;
+        box-shadow: 0 4px 0 0 #3730a3;
+      }
+      .btn-3d-indigo:hover {
+        box-shadow: 0 6px 0 0 #3730a3;
+      }
+      .btn-3d-indigo:active {
+        box-shadow: 0 0px 0 0 #3730a3;
+      }
+
+      /* Emerald 3D */
+      .btn-3d-emerald {
+        background-color: #10b981;
+        box-shadow: 0 4px 0 0 #065f46;
+      }
+      .btn-3d-emerald:hover {
+        box-shadow: 0 6px 0 0 #065f46;
+      }
+      .btn-3d-emerald:active {
+        box-shadow: 0 0px 0 0 #065f46;
+      }
+
+      /* Red 3D */
+      .btn-3d-red {
+        background-color: #ef4444;
+        box-shadow: 0 4px 0 0 #991b1b;
+      }
+      .btn-3d-red:hover {
+        box-shadow: 0 6px 0 0 #991b1b;
+      }
+      .btn-3d-red:active {
+        box-shadow: 0 0px 0 0 #991b1b;
+      }
+
+      /* White/Slate 3D */
+      .btn-3d-white {
+        background-color: #ffffff;
+        box-shadow: 0 4px 0 0 #e2e8f0;
+        color: #64748b;
+        border: 1px solid #f1f5f9;
+      }
+      .btn-3d-white:hover {
+        box-shadow: 0 6px 0 0 #e2e8f0;
+        color: #4f46e5;
+      }
+      .btn-3d-white:active {
+        box-shadow: 0 0px 0 0 #e2e8f0;
+      }
+
+      /* Amber 3D */
+      .btn-3d-amber {
+        background-color: #f59e0b;
+        box-shadow: 0 4px 0 0 #b45309;
+      }
+      .btn-3d-amber:hover {
+        box-shadow: 0 6px 0 0 #b45309;
+      }
+      .btn-3d-amber:active {
+        box-shadow: 0 0px 0 0 #b45309;
+      }
+
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .card-neo {
+        background: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+      }
+      @keyframes slideUp {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      .animate-slide-up {
+        animation: slideUp 0.3s ease-out;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .material-symbols-outlined.filled {
+        font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.11.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0"
+  }
+}
+</script>
+</head>
+<body class="bg-[#f6f7f8] font-display antialiased">
+    <div id="root"></div>
+</body>
+</html>

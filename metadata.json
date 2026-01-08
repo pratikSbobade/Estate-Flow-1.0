@@ -1,0 +1,8 @@
+{
+  "name": "Estate Flow CRM 1.0",
+  "description": "A high-performance real estate CRM for lead management, property tracking, site visits, and performance analytics.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
