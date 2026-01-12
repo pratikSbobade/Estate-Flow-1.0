@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Property, Client, SiteVisit, PropertyConfiguration } from '../types';
 import BookVisitModal from '../components/BookVisitModal';
@@ -148,6 +147,8 @@ const PropertyCard: React.FC<{
   onShare: () => void,
   onBook: () => void
 }> = ({ property, isSelected, onToggle, onViewDetails, onShare, onBook }) => {
+  const photoUrl = property.media?.photos?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=400';
+  
   return (
     <div 
       className={`group relative rounded-[2rem] bg-white p-3 shadow-sm transition-all border ${isSelected ? 'ring-2 ring-indigo-600 border-transparent' : 'border-transparent hover:border-indigo-100 hover:shadow-xl'}`}
@@ -168,7 +169,7 @@ const PropertyCard: React.FC<{
         <div className="flex gap-4 mb-4">
           <div 
             className="w-24 h-24 shrink-0 rounded-2xl bg-cover bg-center bg-slate-100 relative overflow-hidden" 
-            style={{ backgroundImage: `url("${property.media.photos[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=400'}")` }}
+            style={{ backgroundImage: `url("${photoUrl}")` }}
           >
             <div className="absolute top-1 left-1">
                <span className="bg-white/95 backdrop-blur px-1.5 py-0.5 rounded text-[8px] font-black text-slate-800 uppercase shadow-sm">
@@ -356,7 +357,7 @@ const PropertyComparisonModal: React.FC<{ selectedProperties: Property[], onClos
                 {selectedProperties.map(p => (
                   <th key={p.id} className="p-6 min-w-[300px]">
                     <div className="flex flex-col items-center text-center">
-                      <div className="w-full h-32 rounded-[2rem] bg-slate-100 bg-cover bg-center mb-4 shadow-inner" style={{ backgroundImage: `url("${p.media.photos[0]}")` }}></div>
+                      <div className="w-full h-32 rounded-[2rem] bg-slate-100 bg-cover bg-center mb-4 shadow-inner" style={{ backgroundImage: `url("${p.media?.photos?.[0] || ''}")` }}></div>
                       <h4 className="text-base font-black text-slate-800 uppercase tracking-tight">{p.title}</h4>
                       <p className="text-[10px] font-black text-indigo-600 uppercase mt-1">#{p.id}</p>
                     </div>
@@ -407,6 +408,9 @@ const ComparisonRow: React.FC<{ label: string, values: string[] }> = ({ label, v
 );
 
 const PropertyDetailsDrawer: React.FC<{ property: Property, onClose: () => void, onEdit: () => void }> = ({ property, onClose, onEdit }) => {
+  const mainPhoto = property.media?.photos?.[0] || 'https://via.placeholder.com/800x450';
+  const otherPhotos = property.media?.photos?.slice(1) || [];
+
   return (
     <div className="fixed inset-0 z-[160] flex items-end sm:items-stretch sm:justify-end">
       <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
@@ -427,10 +431,10 @@ const PropertyDetailsDrawer: React.FC<{ property: Property, onClose: () => void,
           <div className="space-y-4">
             <div 
               className="aspect-video bg-slate-100 rounded-[2.5rem] bg-cover bg-center shadow-inner border border-slate-100" 
-              style={{ backgroundImage: `url("${property.media.photos[0] || 'https://via.placeholder.com/800x450'}")` }}
+              style={{ backgroundImage: `url("${mainPhoto}")` }}
             ></div>
             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-              {property.media.photos.slice(1).map((p, idx) => (
+              {otherPhotos.map((p, idx) => (
                 <div key={idx} className="w-24 h-24 shrink-0 bg-slate-100 rounded-2xl bg-cover bg-center border border-slate-100" style={{ backgroundImage: `url("${p}")` }}></div>
               ))}
             </div>
@@ -614,9 +618,9 @@ const PropertyDetailsDrawer: React.FC<{ property: Property, onClose: () => void,
               <span className="w-6 h-[1px] bg-slate-200"></span> Documents & Virtual Tour
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <MediaButton label="Virtual Tour" icon="fa-video" url={property.media.videoUrl} color="text-red-500" />
-              <MediaButton label="Floor Plan" icon="fa-draw-polygon" url={property.media.floorPlanUrl} color="text-indigo-500" />
-              {property.media.documents.map((d, i) => (
+              <MediaButton label="Virtual Tour" icon="fa-video" url={property.media?.videoUrl || ''} color="text-red-500" />
+              <MediaButton label="Floor Plan" icon="fa-draw-polygon" url={property.media?.floorPlanUrl || ''} color="text-indigo-500" />
+              {property.media?.documents?.map((d, i) => (
                 <MediaButton key={i} label={d.name} icon="fa-file-pdf" url={d.url} color="text-slate-600" />
               ))}
             </div>
@@ -653,7 +657,7 @@ const PropertyDetailsDrawer: React.FC<{ property: Property, onClose: () => void,
             <i className="fas fa-edit"></i> Edit Details
           </button>
           <button 
-            onClick={() => { onClose(); }} // Add functional redirection if needed
+            onClick={() => { onClose(); }} 
             className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-200"
           >
             Create Quote

@@ -13,7 +13,6 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Show secondary bar on primary module pages as per requirements
   const isMainPage = ['/clients', '/visits', '/properties'].includes(location.pathname);
 
   const getPageTitle = () => {
