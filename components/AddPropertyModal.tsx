@@ -24,6 +24,9 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   const [activeTab, setActiveTab] = useState('basic');
   const [toast, setToast] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
   
+  const [bulkPhotoUrls, setBulkPhotoUrls] = useState('');
+  const [bulkDocUrls, setBulkDocUrls] = useState('');
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -106,18 +109,17 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
     const files = e.target.files;
     if (!files) return;
 
-    // Fixed: Added explicit type annotation (file: File) to resolve TypeScript error on line 109
     const base64Files = await Promise.all(Array.from(files).map((file: File) => fileToBase64(file)));
     const currentPhotos = formData.media?.photos || [];
     handleChange('media.photos', [...currentPhotos, ...base64Files]);
     showToast(`${files.length} Photo(s) Added`);
+    if (photoInputRef.current) photoInputRef.current.value = '';
   };
 
   const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    // Fixed: Added explicit type annotation (file: File) to resolve TypeScript errors on lines 120 and 121
     const newDocs = await Promise.all(Array.from(files).map(async (file: File) => ({
       name: file.name,
       url: await fileToBase64(file)
@@ -126,6 +128,29 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
     const currentDocs = formData.media?.documents || [];
     handleChange('media.documents', [...currentDocs, ...newDocs]);
     showToast(`${files.length} Document(s) Added`);
+    if (docInputRef.current) docInputRef.current.value = '';
+  };
+
+  const addUrlsToPhotos = () => {
+    if (!bulkPhotoUrls.trim()) return;
+    const urls = bulkPhotoUrls.split(',').map(u => u.trim()).filter(Boolean);
+    const currentPhotos = formData.media?.photos || [];
+    handleChange('media.photos', [...currentPhotos, ...urls]);
+    setBulkPhotoUrls('');
+    showToast(`${urls.length} URL(s) added to photos`);
+  };
+
+  const addUrlsToDocs = () => {
+    if (!bulkDocUrls.trim()) return;
+    const urls = bulkDocUrls.split(',').map(u => u.trim()).filter(Boolean);
+    const newDocs = urls.map(url => {
+        const name = url.split('/').pop()?.split('?')[0] || 'Document Link';
+        return { name: name.length > 30 ? 'Document Link' : name, url };
+    });
+    const currentDocs = formData.media?.documents || [];
+    handleChange('media.documents', [...currentDocs, ...newDocs]);
+    setBulkDocUrls('');
+    showToast(`${urls.length} URL(s) added to documents`);
   };
 
   const removePhoto = (index: number) => {
@@ -377,83 +402,122 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
             </div>
           </Section>
 
-          <Section id="media" title="Media & Documents" subtitle="Visuals and paperwork (Upload local files or add links)">
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+          <Section id="media" title="Media & Documents" subtitle="Visuals and paperwork (Direct Upload or Link Imports)">
+            <div className="space-y-12">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 {/* Photos Section */}
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">Property Photos</label>
+                    <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-wider">Property Gallery</h4>
                     <button 
                       onClick={() => photoInputRef.current?.click()}
-                      className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                      className="text-[10px] font-black text-[#4f46e5] uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-100 transition-colors"
                     >
-                      <i className="fas fa-upload"></i> Upload
+                      <i className="fas fa-file-image"></i> Local Upload
                     </button>
                     <input type="file" ref={photoInputRef} multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                   </div>
-                  <Input 
-                    label="Add Photo URLs (separate by comma)" 
-                    value={formData.media?.photos?.filter(p => p.startsWith('http')).join(',')} 
-                    onChange={v => {
-                      const localFiles = formData.media?.photos?.filter(p => p.startsWith('data:')) || [];
-                      const remoteLinks = v.split(',').map((s:string) => s.trim()).filter(Boolean);
-                      handleChange('media.photos', [...localFiles, ...remoteLinks]);
-                    }} 
-                  />
+
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Import Photo URLs (Comma Separated)</label>
+                    <div className="flex gap-2">
+                      <textarea
+                        value={bulkPhotoUrls}
+                        onChange={e => setBulkPhotoUrls(e.target.value)}
+                        placeholder="https://image1.jpg, https://image2.png ..."
+                        className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[60px] transition-colors"
+                      />
+                      <button 
+                        onClick={addUrlsToPhotos}
+                        disabled={!bulkPhotoUrls.trim()}
+                        className="px-4 bg-[#4f46e5] text-white rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-[#3730a3] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
                   
                   {/* Gallery Preview */}
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-4">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mt-4 max-h-60 overflow-y-auto p-1 hide-scrollbar">
                     {formData.media?.photos?.map((photo, idx) => (
-                      <div key={idx} className="aspect-square bg-slate-100 dark:bg-slate-700 rounded-xl relative overflow-hidden border border-slate-200 dark:border-slate-600 group">
+                      <div key={idx} className="aspect-square bg-slate-100 dark:bg-slate-700 rounded-xl relative overflow-hidden border border-slate-200 dark:border-slate-600 group shadow-sm transition-transform hover:scale-[1.02]">
                         <img src={photo} alt={`Property ${idx}`} className="w-full h-full object-cover" />
                         <button 
                           onClick={() => removePhoto(idx)}
                           className="absolute inset-0 bg-red-600/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                         >
-                          <i className="fas fa-trash text-white text-xs"></i>
+                          <i className="fas fa-trash-alt text-white text-sm"></i>
                         </button>
+                        <div className="absolute top-1 right-1 bg-black/40 text-white text-[7px] px-1 rounded backdrop-blur-sm">
+                          {photo.startsWith('data:') ? 'LCL' : 'URL'}
+                        </div>
                       </div>
                     ))}
+                    {(!formData.media?.photos || formData.media.photos.length === 0) && (
+                      <div className="col-span-full py-10 text-center border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-2xl">
+                         <i className="fas fa-images text-slate-200 dark:text-slate-600 text-3xl mb-2"></i>
+                         <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase">Gallery Empty</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Documents Section */}
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">Property Documents</label>
+                    <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-wider">Legal Documents</h4>
                     <button 
                       onClick={() => docInputRef.current?.click()}
-                      className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                      className="text-[10px] font-black text-[#4f46e5] uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-100 transition-colors"
                     >
-                      <i className="fas fa-file-upload"></i> Upload
+                      <i className="fas fa-file-pdf"></i> Local Upload
                     </button>
                     <input type="file" ref={docInputRef} multiple className="hidden" onChange={handleDocUpload} />
                   </div>
-                  <Input 
-                    label="Add Doc URLs (Agreements, Brochures, etc.)" 
-                    placeholder="Comma separated links..."
-                    value={formData.media?.documents?.filter(d => d.url.startsWith('http')).map(d => d.url).join(',')} 
-                    onChange={v => {
-                      const localDocs = formData.media?.documents?.filter(d => d.url.startsWith('data:')) || [];
-                      const remoteDocs = v.split(',').map((u:string) => ({ name: 'Document Link', url: u.trim() })).filter(d => d.url);
-                      handleChange('media.documents', [...localDocs, ...remoteDocs]);
-                    }} 
-                  />
+
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Import Doc URLs (Comma Separated)</label>
+                    <div className="flex gap-2">
+                      <textarea
+                        value={bulkDocUrls}
+                        onChange={e => setBulkDocUrls(e.target.value)}
+                        placeholder="https://site.com/rera.pdf, https://site.com/brochure.pdf ..."
+                        className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[60px] transition-colors"
+                      />
+                      <button 
+                        onClick={addUrlsToDocs}
+                        disabled={!bulkDocUrls.trim()}
+                        className="px-4 bg-[#4f46e5] text-white rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-[#3730a3] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
                   
                   {/* Doc List */}
-                  <div className="space-y-2 mt-4">
+                  <div className="space-y-2 mt-4 max-h-60 overflow-y-auto p-1 hide-scrollbar">
                     {formData.media?.documents?.map((doc, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-xl shadow-sm">
+                      <div key={idx} className="flex items-center justify-between p-3 bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-xl shadow-sm group hover:border-indigo-400 transition-all">
                         <div className="flex items-center gap-3 min-w-0">
-                          <i className={`fas ${doc.url.startsWith('data:') ? 'fa-file-alt' : 'fa-link'} text-indigo-500`}></i>
-                          <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 truncate uppercase">{doc.name}</span>
+                          <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center text-indigo-500">
+                             <i className={`fas ${doc.url.startsWith('data:') ? 'fa-file-alt' : 'fa-link'} text-xs`}></i>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black text-slate-700 dark:text-slate-300 truncate uppercase tracking-tight">{doc.name}</p>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase">{doc.url.startsWith('data:') ? 'Local File' : 'External Link'}</p>
+                          </div>
                         </div>
-                        <button onClick={() => removeDoc(idx)} className="text-red-400 hover:text-red-600 p-1">
-                          <i className="fas fa-times"></i>
+                        <button onClick={() => removeDoc(idx)} className="text-slate-300 hover:text-red-500 p-1 transition-colors">
+                          <i className="fas fa-times-circle"></i>
                         </button>
                       </div>
                     ))}
+                    {(!formData.media?.documents || formData.media.documents.length === 0) && (
+                      <div className="py-10 text-center border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-2xl">
+                         <i className="fas fa-file-contract text-slate-200 dark:text-slate-600 text-3xl mb-2"></i>
+                         <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase">Documents Empty</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

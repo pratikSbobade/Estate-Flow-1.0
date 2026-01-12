@@ -1,81 +1,378 @@
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  PieChart, Pie, Cell, Legend
+} from 'recharts';
+import { Client, Property, SiteVisit, ClientStatus, ClientInteraction } from '../types';
 
-const ProfilePage: React.FC = () => {
+interface ProfilePageProps {
+  clients: Client[];
+  properties: Property[];
+  visits: SiteVisit[];
+}
+
+const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }) => {
+  const [activeTab, setActiveTab] = useState<'info' | 'reports'>('info');
+  const [targetRevenue, setTargetRevenue] = useState<number>(() => {
+    return Number(localStorage.getItem('agent_target_revenue')) || 10000000; // 1 Cr default
+  });
+
   const user = {
     name: 'Rahul Singh',
     role: 'Senior Sales Agent',
     id: 'AGENT-99',
     region: 'South Nagpur',
     reraId: 'NAG/A/2023/11023',
-    visits: 25,
-    earnings: 245000,
-    rank: 3,
-    totalAgents: 12,
-    joinDate: '15 Jan 2022'
+    joinDate: '15 Jan 2022',
+    photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200'
+  };
+
+  // 1. REVENUE CALCULATIONS
+  const actualRevenue = useMemo(() => {
+    return properties
+      .filter(p => p.status === 'Sold')
+      .reduce((sum, p) => sum + (p.financials?.priceMin || 0), 0);
+  }, [properties]);
+
+  const targetProgress = Math.min(Math.round((actualRevenue / targetRevenue) * 100), 100);
+
+  // 2. DAILY ACTIVITY DATA
+  const dailyActivity = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const newLeads = clients.filter(c => c.createdAt.startsWith(today)).length;
+    const todayVisits = visits.filter(v => v.scheduledAt.startsWith(today)).length;
+    
+    const allInteractions: ClientInteraction[] = clients.flatMap(c => c.interactions || []);
+    const todayCalls = allInteractions.filter(i => i.type === 'Call' && i.timestamp.startsWith(today)).length;
+
+    return { newLeads, todayVisits, todayCalls };
+  }, [clients, visits]);
+
+  // 3. CALLS BY 2-HOUR INTERVALS
+  const callDistributionData = useMemo(() => {
+    const allInteractions: ClientInteraction[] = clients.flatMap(c => c.interactions || []);
+    const calls = allInteractions.filter(i => i.type === 'Call');
+    
+    const slots = [
+      { slot: '08-10', count: 0, label: '8AM-10AM' },
+      { slot: '10-12', count: 0, label: '10AM-12PM' },
+      { slot: '12-14', count: 0, label: '12PM-2PM' },
+      { slot: '14-16', count: 0, label: '2PM-4PM' },
+      { slot: '16-18', count: 0, label: '4PM-6PM' },
+      { slot: '18-20', count: 0, label: '6PM-8PM' },
+      { slot: '20-22', count: 0, label: '8PM-10PM' },
+    ];
+
+    calls.forEach(call => {
+      const hour = new Date(call.timestamp).getHours();
+      const slotIndex = Math.floor((hour - 8) / 2);
+      if (slotIndex >= 0 && slotIndex < slots.length) {
+        slots[slotIndex].count++;
+      }
+    });
+
+    return slots;
+  }, [clients]);
+
+  // 4. MOTIVATION ALERTS
+  const performanceAlerts = useMemo(() => {
+    const alerts = [];
+    const gap = targetRevenue - actualRevenue;
+    
+    // Target Alert
+    if (gap > 0) {
+      alerts.push({
+        id: 'target',
+        icon: 'fa-rocket',
+        title: 'Goal In Sight',
+        msg: `₹${(gap / 100000).toFixed(1)}L to reach your goal. Approx 2-3 elite closures needed.`,
+        color: 'bg-indigo-600'
+      });
+    }
+
+    // Pipeline Alert
+    const hotLeads = clients.filter(c => c.priority === ClientStatus.HOT).length;
+    if (hotLeads > 0) {
+      alerts.push({
+        id: 'pipeline',
+        icon: 'fa-fire',
+        title: 'High-Heat Pipeline',
+        msg: `${hotLeads} Hot Leads are active. High conversion probability detected for this week.`,
+        color: 'bg-red-500'
+      });
+    }
+
+    // Quote Alert (Mocked logic for specific context)
+    alerts.push({
+      id: 'quote',
+      icon: 'fa-file-invoice-dollar',
+      title: 'Sales Quote Velocity',
+      msg: '3 Price quotes sent in last 48h. Estimated closure value: ₹85L.',
+      color: 'bg-emerald-500'
+    });
+
+    return alerts;
+  }, [targetRevenue, actualRevenue, clients]);
+
+  // 5. LEAD QUALITY DATA
+  const leadQualityData = useMemo(() => {
+    const statusCounts = { Hot: 0, Warm: 0, Cold: 0 };
+    clients.forEach(c => {
+      if (c.priority === ClientStatus.HOT) statusCounts.Hot++;
+      else if (c.priority === ClientStatus.WARM) statusCounts.Warm++;
+      else statusCounts.Cold++;
+    });
+    return [
+      { name: 'Hot Leads', value: statusCounts.Hot, color: '#ef4444' },
+      { name: 'Warm Pipeline', value: statusCounts.Warm, color: '#4f46e5' },
+      { name: 'Cold/Nurture', value: statusCounts.Cold, color: '#94a3b8' }
+    ];
+  }, [clients]);
+
+  const handleSetTarget = (val: number) => {
+    setTargetRevenue(val);
+    localStorage.setItem('agent_target_revenue', val.toString());
   };
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
-      <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col items-center text-center">
+    <div className="space-y-8 animate-slide-up">
+      {/* PROFILE HEADER */}
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transition-colors">
         <div className="relative mb-6">
-          <div className="w-28 h-28 bg-indigo-50 rounded-full flex items-center justify-center border-4 border-white shadow-xl">
-            <i className="fas fa-user-tie text-indigo-600 text-5xl"></i>
+          <div className="w-32 h-32 bg-slate-100 dark:bg-slate-700 rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-2xl transition-colors">
+            <img src={user.photo} className="w-full h-full object-cover" alt="Profile" />
           </div>
-          <button className="absolute bottom-0 right-0 w-10 h-10 btn-3d btn-3d-indigo text-white rounded-full border-2 border-white flex items-center justify-center">
-            <i className="fas fa-camera text-xs"></i>
+          <button className="absolute -bottom-2 -right-2 w-12 h-12 btn-3d btn-3d-indigo text-white rounded-2xl flex items-center justify-center">
+            <i className="fas fa-edit text-sm"></i>
           </button>
         </div>
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">{user.name}</h2>
-        <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">{user.role} • {user.id}</p>
-        <div className="flex gap-2 mt-6">
-          <span className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">
-            {user.region}
-          </span>
-          <span className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">
-            Verified RERA
-          </span>
+        <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight uppercase transition-colors">{user.name}</h2>
+        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-[0.2em]">{user.role} • {user.id}</p>
+        
+        <div className="flex gap-3 mt-8">
+           <span className="px-5 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-800 transition-colors">
+             {user.region} Region
+           </span>
+           <span className="px-5 py-2.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 dark:border-emerald-800 transition-colors">
+             RERA Licensed
+           </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="card-neo p-6 rounded-[2rem] flex flex-col items-center">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visits</p>
-          <p className="text-2xl font-black text-slate-800 mt-1">{user.visits}</p>
-        </div>
-        <div className="card-neo p-6 rounded-[2rem] flex flex-col items-center">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Earnings</p>
-          <p className="text-2xl font-black text-emerald-600 mt-1">₹{user.earnings/1000}K</p>
-        </div>
-        <div className="card-neo p-6 rounded-[2rem] flex flex-col items-center">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rank</p>
-          <p className="text-2xl font-black text-amber-500 mt-1">#{user.rank}</p>
-        </div>
+      {/* TABS */}
+      <div className="flex bg-white dark:bg-slate-800 p-2 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm gap-2 transition-colors">
+        <button 
+          onClick={() => setActiveTab('info')}
+          className={`flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+        >
+          <i className="fas fa-user-circle mr-2"></i> Professional Identity
+        </button>
+        <button 
+          onClick={() => setActiveTab('reports')}
+          className={`flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'reports' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+        >
+          <i className="fas fa-chart-line mr-2"></i> Sales Performance
+        </button>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-        <div className="px-8 py-5 border-b bg-slate-50">
-          <h3 className="font-black text-slate-800 text-xs uppercase tracking-widest">Professional Details</h3>
-        </div>
-        <div className="divide-y divide-slate-50">
-          <ProfileRow label="RERA ID" value={user.reraId} />
-          <ProfileRow label="Join Date" value={user.joinDate} />
-          <ProfileRow label="Territory" value="Nagpur South & Wardha Road" />
-          <ProfileRow label="Specialization" value="Luxury Residential" />
-        </div>
-      </div>
+      {activeTab === 'info' ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+             <MetricCard label="Total Leads" value={clients.length} sub="Lifetime" color="indigo" />
+             <MetricCard label="Site Visits" value={visits.length} sub="Successful" color="purple" />
+             <MetricCard label="Closed Value" value={`₹${(actualRevenue/10000000).toFixed(1)}Cr`} sub="Sold" color="emerald" />
+             <MetricCard label="Avg. Score" value={`${Math.round(clients.reduce((acc, c) => acc + (c.nurturingScore || 0), 0) / (clients.length || 1))}%`} sub="Lead Quality" color="amber" />
+          </div>
 
-      <button className="w-full py-5 btn-3d btn-3d-red text-white font-black rounded-3xl transition-colors flex items-center justify-center gap-3 uppercase text-xs tracking-widest">
-        <i className="fas fa-sign-out-alt"></i> Logout Session
-      </button>
+          <div className="bg-white dark:bg-slate-800 rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden transition-colors">
+            <div className="px-8 py-6 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 transition-colors">
+              <h3 className="font-black text-slate-800 dark:text-white text-xs uppercase tracking-widest">Administrative Dossier</h3>
+            </div>
+            <div className="divide-y divide-slate-50 dark:divide-slate-700">
+              <ProfileRow label="RERA ID" value={user.reraId} />
+              <ProfileRow label="Join Date" value={user.joinDate} />
+              <ProfileRow label="Territory" value="Nagpur South Elite" />
+              <ProfileRow label="Focus Area" value="Luxury High-rise Projects" />
+            </div>
+          </div>
+          
+          <button className="w-full py-5 btn-3d btn-3d-red text-white font-black rounded-[2rem] flex items-center justify-center gap-3 uppercase text-xs tracking-widest">
+            <i className="fas fa-power-off"></i> Terminate Agent Session
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-8 pb-10">
+          {/* MOTIVATION & INTELLIGENCE ALERTS */}
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+            {performanceAlerts.map(alert => (
+              <div key={alert.id} className="min-w-[280px] bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm flex gap-4 animate-slide-up transition-colors">
+                 <div className={`w-12 h-12 ${alert.color} text-white rounded-2xl flex items-center justify-center shadow-lg shrink-0`}>
+                    <i className={`fas ${alert.icon} text-lg`}></i>
+                 </div>
+                 <div className="min-w-0">
+                    <p className="text-[10px] font-black text-slate-800 dark:text-white uppercase tracking-tight truncate">{alert.title}</p>
+                    <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 leading-relaxed mt-1">{alert.msg}</p>
+                 </div>
+              </div>
+            ))}
+          </div>
+
+          {/* TARGET REVENUE SECTION */}
+          <div className="bg-slate-900 text-white p-8 sm:p-10 rounded-[3.5rem] shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-10 opacity-5 transform rotate-12">
+               <i className="fas fa-trophy text-9xl"></i>
+            </div>
+            
+            <div className="relative z-10 space-y-8">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div>
+                   <h3 className="text-xl font-black uppercase tracking-tight">Quarterly Revenue Engine</h3>
+                   <p className="text-indigo-300 text-[10px] font-black uppercase tracking-widest mt-1">Strategic Goal Alignment</p>
+                </div>
+                <div className="text-right">
+                   <p className="text-4xl font-black tracking-tight">₹{(targetRevenue/10000000).toFixed(2)}Cr</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                 <input 
+                   type="range" 
+                   min="1000000" 
+                   max="100000000" 
+                   step="1000000"
+                   value={targetRevenue} 
+                   onChange={(e) => handleSetTarget(Number(e.target.value))}
+                   className="w-full h-3 bg-white/10 rounded-full appearance-none cursor-pointer accent-indigo-400"
+                 />
+                 <div className="flex justify-between text-[8px] font-black text-white/40 uppercase tracking-widest">
+                    <span>Baseline (10L)</span>
+                    <span>Elite Performer (10Cr)</span>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-4">
+                 <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 backdrop-blur-sm">
+                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Completion Rate</p>
+                    <p className="text-3xl font-black">{targetProgress}%</p>
+                 </div>
+                 <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 backdrop-blur-sm">
+                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Revenue Gap</p>
+                    <p className="text-3xl font-black">₹{Math.max(0, (targetRevenue - actualRevenue)/1000000).toFixed(1)}L</p>
+                 </div>
+                 <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 backdrop-blur-sm">
+                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Performance Tier</p>
+                    <p className="text-xl font-black uppercase tracking-widest">{targetProgress > 80 ? 'Gold Elite' : targetProgress > 40 ? 'Silver Pro' : 'Steady Builder'}</p>
+                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* DAILY ACTIVITY REPORT */}
+          <div className="card-neo p-8 rounded-[3rem]">
+            <div className="flex justify-between items-center mb-8">
+               <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white transition-colors">Daily Activity Command</h4>
+               <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest transition-colors">Today's Pulse</span>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+               <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-[2rem] border border-slate-100 dark:border-slate-800 text-center transition-colors">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">New Leads</p>
+                  <p className="text-3xl font-black text-indigo-600">{dailyActivity.newLeads}</p>
+               </div>
+               <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-[2rem] border border-slate-100 dark:border-slate-800 text-center transition-colors">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Calls Disposed</p>
+                  <p className="text-3xl font-black text-emerald-600">{dailyActivity.todayCalls}</p>
+               </div>
+               <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-[2rem] border border-slate-100 dark:border-slate-800 text-center transition-colors">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Visits Conducted</p>
+                  <p className="text-3xl font-black text-amber-500">{dailyActivity.todayVisits}</p>
+               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* CALL VELOCITY BAR CHART (2HR INTERVALS) */}
+            <div className="card-neo p-8 rounded-[3rem] lg:col-span-2">
+               <div className="flex justify-between items-center mb-8">
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white transition-colors">Call Distribution Velocity</h4>
+                    <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">2-Hour Interval Performance Tracking</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest transition-colors">Active Duration</span>
+                  </div>
+               </div>
+               <div className="h-72">
+                 <ResponsiveContainer width="100%" height="100%">
+                   <BarChart data={callDistributionData}>
+                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                     <XAxis dataKey="label" axisLine={false} tickLine={false} style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }} />
+                     <YAxis axisLine={false} tickLine={false} style={{ fontSize: '9px', fontWeight: 900 }} />
+                     <Tooltip 
+                        cursor={{ fill: '#f8fafc' }} 
+                        contentStyle={{ borderRadius: '20px', fontSize: '10px', border: 'none', fontWeight: 900, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} 
+                     />
+                     <Bar dataKey="count" name="Total Calls" fill="#4f46e5" radius={[10, 10, 0, 0]} barSize={40} />
+                   </BarChart>
+                 </ResponsiveContainer>
+               </div>
+            </div>
+
+            {/* PIPELINE QUALITY PIE CHART */}
+            <div className="card-neo p-8 rounded-[3rem]">
+               <div className="flex justify-between items-center mb-8">
+                  <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white transition-colors">Lead Pipeline Health</h4>
+                  <span className="text-[9px] font-black text-red-500 uppercase tracking-widest transition-colors">Quality Score</span>
+               </div>
+               <div className="h-64">
+                 <ResponsiveContainer width="100%" height="100%">
+                   <PieChart>
+                     <Pie data={leadQualityData} cx="50%" cy="50%" innerRadius={60} outerRadius={85} paddingAngle={5} dataKey="value">
+                       {leadQualityData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                     </Pie>
+                     <Tooltip contentStyle={{ borderRadius: '20px', fontSize: '10px', border: 'none', fontWeight: 900 }} />
+                     <Legend iconType="circle" verticalAlign="bottom" wrapperStyle={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', paddingTop: '20px' }} />
+                   </PieChart>
+                 </ResponsiveContainer>
+               </div>
+            </div>
+
+            {/* QUICK STATS COLUMN */}
+            <div className="grid grid-cols-1 gap-4">
+               <div className="bg-white dark:bg-slate-800 p-8 rounded-[3rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Closure Efficiency</p>
+                  <p className="text-4xl font-black text-emerald-600">{Math.round((properties.filter(p => p.status === 'Sold').length / visits.length) * 100) || 0}%</p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Visit to Close Ratio</p>
+               </div>
+               <div className="bg-white dark:bg-slate-800 p-8 rounded-[3rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">High Value Targets</p>
+                  <p className="text-4xl font-black text-amber-500">{clients.filter(c => c.budgetMax > 5000000).length}</p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Leads with ₹50L+ Budget</p>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
+const MetricCard: React.FC<{ label: string, value: string | number, sub: string, color: string }> = ({ label, value, sub, color }) => (
+  <div className="card-neo p-6 rounded-[2rem] border-b-8 border-indigo-500/10 hover:border-indigo-600 transition-all text-center">
+    <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 transition-colors">{label}</p>
+    <p className={`text-2xl font-black transition-colors ${
+      color === 'indigo' ? 'text-indigo-600' : 
+      color === 'purple' ? 'text-purple-600' : 
+      color === 'emerald' ? 'text-emerald-600' : 'text-amber-500'
+    }`}>{value}</p>
+    <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-tighter transition-colors">{sub}</p>
+  </div>
+);
+
 const ProfileRow: React.FC<{ label: string, value: string }> = ({ label, value }) => (
-  <div className="px-8 py-5 flex justify-between items-center hover:bg-slate-50 transition-colors">
-    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
-    <span className="text-sm font-black text-slate-700 tracking-tight">{value}</span>
+  <div className="px-8 py-5 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{label}</span>
+    <span className="text-sm font-black text-slate-700 dark:text-slate-300 tracking-tight transition-colors">{value}</span>
   </div>
 );
 

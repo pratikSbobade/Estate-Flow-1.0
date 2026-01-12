@@ -24,31 +24,77 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
   const [bookingClient, setBookingClient] = useState<Client | null>(null);
   const [callOutcomeClient, setCallOutcomeClient] = useState<Client | null>(null);
   const [matchingClient, setMatchingClient] = useState<Client | null>(null);
-  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
+  const [isLeadsDropdownOpen, setIsLeadsDropdownOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>('created');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Filter States
-  const [statusFilters, setStatusFilters] = useState<ClientStatus[]>([]);
   const [locationFilters, setLocationFilters] = useState<string[]>([]);
+  const [outcomeFilter, setOutcomeFilter] = useState<string | null>(null);
 
-  // Derived Data: Unique Locations from current clients
-  const clientLocations = useMemo(() => {
+  const leadsDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Helper to extract the latest call outcome for a client
+  const getLatestCallOutcome = (client: Client) => {
+    const callLogs = (client.interactions || [])
+      .filter(i => i.type === 'Call')
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
+    if (callLogs.length === 0) return 'Fresh Leads';
+    
+    const outcomePart = callLogs[0].description.split(': ')[1]?.split(' - ')[0];
+    return outcomePart || 'Unknown';
+  };
+
+  // Calculate counts for all outcomes for the dropdown display
+  const outcomeStats = useMemo(() => {
+    const stats: Record<string, number> = { 'Fresh Leads': 0 };
+    clients.forEach(c => {
+      const outcome = getLatestCallOutcome(c);
+      stats[outcome] = (stats[outcome] || 0) + 1;
+    });
+    return stats;
+  }, [clients]);
+
+  // Derived unique outcomes for the dropdown
+  const uniqueDynamicOutcomes = useMemo(() => {
+    return Object.keys(outcomeStats)
+      .filter(o => o !== 'Fresh Leads')
+      .sort();
+  }, [outcomeStats]);
+
+  // Derived Data: Unique Locations
+  const allAvailableLocations = useMemo(() => {
     const locs = new Set<string>();
     clients.forEach(c => c.locations.forEach(l => locs.add(l)));
+    availableLocations.forEach(l => locs.add(l));
     return Array.from(locs).sort();
-  }, [clients]);
+  }, [clients, availableLocations]);
+
+  // Handle outside click for unified dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (leadsDropdownRef.current && !leadsDropdownRef.current.contains(event.target as Node)) {
+        setIsLeadsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Sorting and Filtering Logic
   const filteredClients = useMemo(() => {
     let result = clients.filter(c => {
       const matchesSearch = `${c.firstName} ${c.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            c.id.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilters.length === 0 || statusFilters.includes(c.priority);
       const matchesLocation = locationFilters.length === 0 || 
                              c.locations.some(loc => locationFilters.includes(loc));
-      return matchesSearch && matchesStatus && matchesLocation;
+      
+      const latestOutcome = getLatestCallOutcome(c);
+      const matchesOutcome = !outcomeFilter || latestOutcome === outcomeFilter;
+
+      return matchesSearch && matchesLocation && matchesOutcome;
     });
 
     // Apply Sorting
@@ -59,7 +105,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
       } else if (sortField === 'score') {
         comparison = a.nurturingScore - b.nurturingScore;
       } else if (sortField === 'created') {
-        comparison = new Date(a.createdAt).getTime() - new Date(a.createdAt).getTime();
+        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       } else if (sortField === 'budget') {
         comparison = a.budgetMax - b.budgetMax;
       }
@@ -67,7 +113,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
     });
 
     return result;
-  }, [clients, searchQuery, statusFilters, locationFilters, sortField, sortOrder]);
+  }, [clients, searchQuery, locationFilters, outcomeFilter, sortField, sortOrder]);
 
   const clientsByStatus = {
     [ClientStatus.HOT]: filteredClients.filter(c => c.priority === ClientStatus.HOT),
@@ -75,11 +121,17 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
     [ClientStatus.COLD]: filteredClients.filter(c => c.priority === ClientStatus.COLD),
   };
 
-  const hasActiveFilters = statusFilters.length > 0 || locationFilters.length > 0;
+  const hasActiveFilters = locationFilters.length > 0 || !!outcomeFilter;
 
   const clearFilters = () => {
-    setStatusFilters([]);
     setLocationFilters([]);
+    setOutcomeFilter(null);
+  };
+
+  const toggleLocation = (loc: string) => {
+    setLocationFilters(prev => 
+      prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc]
+    );
   };
 
   const toggleSort = (field: SortField) => {
@@ -95,31 +147,122 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">Active Leads</h1>
-          <p className="text-slate-400 dark:text-slate-500 text-[9px] font-bold uppercase tracking-widest">
-            {filteredClients.length} Results {hasActiveFilters && '(Filtered)'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {hasActiveFilters && (
-            <button 
-              onClick={clearFilters}
-              className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline mr-2"
-            >
-              Reset
-            </button>
+        <div className="relative" ref={leadsDropdownRef}>
+          <button 
+            onClick={() => setIsLeadsDropdownOpen(!isLeadsDropdownOpen)}
+            className="text-left group transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 transition-colors">
+                Leads
+              </h1>
+              <i className={`fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-indigo-600 transition-transform duration-300 ${isLeadsDropdownOpen ? 'rotate-180' : ''}`}></i>
+              
+              {hasActiveFilters && (
+                <div className="hidden sm:flex gap-1 ml-2">
+                  {outcomeFilter && <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-[7px] font-black uppercase">{outcomeFilter}</span>}
+                  {locationFilters.length > 0 && <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-[7px] font-black uppercase">{locationFilters.length} Areas</span>}
+                </div>
+              )}
+            </div>
+            <p className="text-slate-400 dark:text-slate-500 text-[9px] font-bold uppercase tracking-widest mt-0.5">
+              {filteredClients.length} Total Leads {hasActiveFilters && '(Filtered)'}
+            </p>
+          </button>
+
+          {isLeadsDropdownOpen && (
+            <div className="absolute top-full left-0 sm:-left-4 mt-3 w-[calc(100vw-2rem)] sm:w-[550px] bg-white dark:bg-slate-800 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-slate-700 z-[100] p-1 animate-slide-up flex flex-col max-h-[85vh]">
+              <div className="px-6 py-5 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center">
+                <div>
+                  <p className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest leading-none">Advanced Filtering</p>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-1.5">Refine lead pipeline</p>
+                </div>
+                {hasActiveFilters && (
+                  <button onClick={clearFilters} className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase hover:underline">Reset All</button>
+                )}
+              </div>
+              
+              <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-700 overflow-y-auto sm:overflow-hidden sm:h-[420px]">
+                {/* Disposition Section */}
+                <div className="flex-1 p-4 sm:p-5 overflow-y-auto no-scrollbar space-y-1.5 min-h-[200px] sm:min-h-0">
+                  <div className="flex items-center gap-2 px-3 pb-2">
+                    <i className="fas fa-phone-alt text-[9px] text-indigo-500"></i>
+                    <p className="text-[9px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Call Outcome</p>
+                  </div>
+                  
+                  <button 
+                    onClick={() => setOutcomeFilter(null)}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-between ${!outcomeFilter ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                  >
+                    All Pipeline
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] ${!outcomeFilter ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>{clients.length}</span>
+                  </button>
+
+                  <button 
+                    onClick={() => setOutcomeFilter('Fresh Leads')}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-between ${outcomeFilter === 'Fresh Leads' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                  >
+                    Fresh Leads
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] ${outcomeFilter === 'Fresh Leads' ? 'bg-white/20 text-white' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600'}`}>
+                      {outcomeStats['Fresh Leads'] || 0}
+                    </span>
+                  </button>
+
+                  {uniqueDynamicOutcomes.map(outcome => (
+                    <button 
+                      key={outcome}
+                      onClick={() => setOutcomeFilter(outcome)}
+                      className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-between ${outcomeFilter === outcome ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                    >
+                      {outcome}
+                      <span className={`px-2 py-0.5 rounded-full text-[8px] ${outcomeFilter === outcome ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                        {outcomeStats[outcome]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Location Section */}
+                <div className="flex-1 p-4 sm:p-5 overflow-y-auto no-scrollbar space-y-1.5 min-h-[200px] sm:min-h-0">
+                  <div className="flex items-center gap-2 px-3 pb-2">
+                    <i className="fas fa-map-marker-alt text-[9px] text-emerald-500"></i>
+                    <p className="text-[9px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Preferred Areas</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-1">
+                    {allAvailableLocations.map(loc => (
+                      <button 
+                        key={loc}
+                        onClick={() => toggleLocation(loc)}
+                        className={`w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-between transition-all ${locationFilters.includes(loc) ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                      >
+                        {loc}
+                        {locationFilters.includes(loc) && <i className="fas fa-check text-[8px]"></i>}
+                      </button>
+                    ))}
+                    {allAvailableLocations.length === 0 && (
+                      <div className="py-10 text-center px-4 bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border-2 border-dashed border-slate-100 dark:border-slate-700">
+                        <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest italic">No areas recorded</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-5 border-t border-slate-50 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 rounded-b-[2rem] sm:rounded-b-[2.5rem]">
+                <button 
+                  onClick={() => setIsLeadsDropdownOpen(false)}
+                  className="w-full py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-900/10"
+                >
+                  Confirm Selection
+                </button>
+              </div>
+            </div>
           )}
+        </div>
+
+        <div className="flex items-center gap-2">
           <div className="flex bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 rounded-xl p-1 gap-1 relative transition-colors">
-            <button 
-              onClick={() => setIsFilterModalOpen(true)}
-              className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center relative ${hasActiveFilters ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
-              title="Filter Leads"
-            >
-              <i className="fas fa-filter text-[11px]"></i>
-              {hasActiveFilters && <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-indigo-600 rounded-full border border-white dark:border-slate-800"></span>}
-            </button>
-            
             <button 
               onClick={() => setIsSortOpen(!isSortOpen)}
               className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${isSortOpen ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
@@ -195,9 +338,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
       ) : (
         <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar min-h-[600px]">
           {[ClientStatus.HOT, ClientStatus.WARM, ClientStatus.COLD].map((status) => {
-            const isColumnVisible = statusFilters.length === 0 || statusFilters.includes(status);
-            if (!isColumnVisible) return null;
-
             return (
               <div key={status} className="flex-1 min-w-[320px] max-w-[400px] flex flex-col gap-4">
                 <div className={`p-4 rounded-[1.5rem] flex items-center justify-between border-b-4 ${
@@ -243,74 +383,12 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
         </div>
       )}
 
-      {/* Filter Modal */}
-      {isFilterModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[250] flex items-end sm:items-center justify-center p-0 sm:p-6">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up transition-colors">
-            <div className="p-8 border-b dark:border-slate-700 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Filter Prospects</h3>
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Refine your active lead list</p>
-              </div>
-              <button onClick={() => setIsFilterModalOpen(false)} className="w-10 h-10 bg-slate-50 dark:bg-slate-700 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 transition-colors"><i className="fas fa-times"></i></button>
-            </div>
-            <div className="p-8 space-y-8">
-              {/* Status Filter */}
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Lead Priority Status</label>
-                <div className="flex flex-wrap gap-2">
-                  {[ClientStatus.HOT, ClientStatus.WARM, ClientStatus.COLD].map(status => (
-                    <button 
-                      key={status}
-                      onClick={() => setStatusFilters(prev => prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status])}
-                      className={`px-5 py-2.5 rounded-xl border text-[9px] font-black uppercase transition-all ${statusFilters.includes(status) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-300 border-slate-100 dark:border-slate-600 hover:border-indigo-200'}`}
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Location Filter */}
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Preferred Locations</label>
-                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar pr-2">
-                  {(clientLocations.length > 0 ? clientLocations : availableLocations).map(loc => (
-                    <button 
-                      key={loc}
-                      onClick={() => setLocationFilters(prev => prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc])}
-                      className={`px-4 py-2 rounded-xl border text-[9px] font-black uppercase transition-all ${locationFilters.includes(loc) ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 dark:bg-slate-700 text-slate-400 dark:text-slate-300 border-slate-100 dark:border-slate-600 hover:border-indigo-200'}`}
-                    >
-                      {loc}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex gap-3 transition-colors">
-              <button 
-                onClick={clearFilters}
-                className="flex-1 py-4 btn-3d btn-3d-white text-[10px] font-black uppercase rounded-2xl"
-              >
-                Reset All
-              </button>
-              <button 
-                onClick={() => setIsFilterModalOpen(false)}
-                className="flex-[2] py-4 btn-3d btn-3d-indigo text-white text-[10px] font-black uppercase rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-indigo-900/40"
-              >
-                Apply Filters
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {editingClient && (
         <AddClientModal 
           initialData={editingClient} 
           onClose={() => setEditingClient(null)} 
           onSubmit={(updated) => { onUpdateClient(updated); setEditingClient(null); }} 
-          availableLocations={availableLocations}
+          availableLocations={allAvailableLocations}
         />
       )}
       
@@ -349,7 +427,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
     </div>
   );
 };
-/* ...rest of file (ClientCard, etc) remains the same ... */
+
 const ClientCard: React.FC<{ 
   client: Client, 
   visits: SiteVisit[], 
@@ -514,7 +592,7 @@ const ClientCard: React.FC<{
     </div>
   );
 };
-/* ProfileItem, TemplateItem, CallOutcomeModal, PropertyRecommendationsSidebar remain exactly as before */
+
 const PropertyRecommendationsSidebar: React.FC<{ client: Client, allProperties: Property[], onClose: () => void }> = ({ client, allProperties, onClose }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -725,7 +803,7 @@ const CallOutcomeModal: React.FC<{ client: Client, onClose: () => void, onSubmit
             <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase block ml-1">Call Outcome (Mandatory)</label>
             <div className="grid grid-cols-3 gap-2">
               {outcomes.map(o => (
-                <button key={o} onClick={() => setOutcome(o)} className={`p-2.5 rounded-xl border text-[8px] font-black uppercase transition-all ${outcome === o ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-300 border-slate-100 dark:border-slate-600 hover:border-indigo-200'}`}>{o}</button>
+                <button key={o} onClick={() => setOutcome(o)} className={`p-2.5 rounded-xl border text-[8px] font-black uppercase transition-all ${outcome === o ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-300 border-slate-100 dark:border-slate-600 hover:border-indigo-200'}`}>{o}</button>
               ))}
             </div>
           </div>

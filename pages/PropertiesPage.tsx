@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Property, Client, SiteVisit, PropertyConfiguration } from '../types';
 import BookVisitModal from '../components/BookVisitModal';
 
@@ -16,7 +16,6 @@ type SortField = 'price' | 'title' | 'possession';
 
 const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, searchQuery, onAddProperty, onEditProperty, onAddVisit }) => {
   const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
-  const [filter, setFilter] = useState('All');
   const [viewingProperty, setViewingProperty] = useState<Property | null>(null);
   const [sharingProperty, setSharingProperty] = useState<Property | null>(null);
   const [bookingProperty, setBookingProperty] = useState<Property | null>(null);
@@ -25,16 +24,43 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
   const [sortField, setSortField] = useState<SortField>('title');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
+  // Property Type Dropdown States
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Handle outside click for type dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target as Node)) {
+        setIsTypeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const typeStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    properties.forEach(p => {
+      stats[p.type] = (stats[p.type] || 0) + 1;
+    });
+    return stats;
+  }, [properties]);
+
+  const uniquePropertyTypes = useMemo(() => {
+    return Object.keys(typeStats).sort();
+  }, [typeStats]);
+
   const filteredAndSortedProperties = useMemo(() => {
     let result = properties.filter(p => {
       const matchesSearch = (p.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                             (p.location?.area || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                             (p.id || '').toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesFilter = filter === 'All' || 
-                            (filter === 'Ready' && (p.possessionDate === 'Ready' || p.possessionDate === 'Immediate')) ||
-                            (filter === 'Plot' && p.type === 'Plot') ||
-                            (filter === 'Under Construction' && p.listingType === 'Underconstruction');
-      return matchesSearch && matchesFilter;
+      
+      const matchesType = !typeFilter || p.type === typeFilter;
+
+      return matchesSearch && matchesType;
     });
 
     result.sort((a, b) => {
@@ -52,7 +78,7 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
     });
 
     return result;
-  }, [properties, searchQuery, filter, sortField, sortOrder]);
+  }, [properties, searchQuery, typeFilter, sortField, sortOrder]);
 
   const toggleSelect = (id: string) => {
     setSelectedProperties(prev => 
@@ -77,27 +103,53 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">Inventory</h1>
-          <p className="text-slate-400 dark:text-slate-500 text-[9px] font-bold uppercase tracking-widest transition-colors">{filteredAndSortedProperties.length} Matches Found</p>
-        </div>
-        <div className="flex items-center gap-3 relative">
-          <div className="flex gap-2 pb-1 overflow-x-auto no-scrollbar">
-            {['All', 'Ready', 'Plot', 'Under Construction'].map(chip => (
+        <div className="relative" ref={typeDropdownRef}>
+          <button 
+            onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
+            className="text-left group transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 transition-colors">
+                {typeFilter ? `Properties (${typeFilter})` : 'Properties'}
+              </h1>
+              <i className={`fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-indigo-600 transition-transform duration-300 ${isTypeDropdownOpen ? 'rotate-180' : ''}`}></i>
+            </div>
+            <p className="text-slate-400 dark:text-slate-500 text-[9px] font-bold uppercase tracking-widest mt-0.5">
+              {filteredAndSortedProperties.length} Total {typeFilter && '(Filtered)'}
+            </p>
+          </button>
+
+          {isTypeDropdownOpen && (
+            <div className="absolute top-full left-0 mt-3 w-64 bg-white dark:bg-slate-800 rounded-[2rem] shadow-2xl border border-slate-100 dark:border-slate-700 z-[100] p-2 animate-slide-up">
+              <div className="px-4 py-3 border-b border-slate-50 dark:border-slate-700 mb-2">
+                <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Select Property Type</p>
+              </div>
+              
               <button 
-                key={chip}
-                onClick={() => setFilter(chip)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all border ${
-                  filter === chip 
-                  ? 'bg-indigo-600 border-transparent text-white shadow-md' 
-                  : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400 dark:text-slate-400 hover:border-indigo-400'
-                }`}
+                onClick={() => { setTypeFilter(null); setIsTypeDropdownOpen(false); }}
+                className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-between ${!typeFilter ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
               >
-                {chip}
+                All Properties
+                <span className={`px-2 py-0.5 rounded-full text-[8px] ${!typeFilter ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>{properties.length}</span>
               </button>
-            ))}
-          </div>
-          
+
+              {uniquePropertyTypes.map(type => (
+                <button 
+                  key={type}
+                  onClick={() => { setTypeFilter(type); setIsTypeDropdownOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-between mt-1 ${typeFilter === type ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                >
+                  {type}
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] ${typeFilter === type ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                    {typeStats[type]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 relative">
           <div className="flex bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 rounded-xl p-1 gap-1 relative transition-colors">
             <button 
               onClick={() => setIsSortOpen(!isSortOpen)}
