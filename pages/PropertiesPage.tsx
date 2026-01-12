@@ -100,6 +100,17 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
     return properties.filter(p => selectedProperties.includes(p.id));
   };
 
+  const handleContactRM = (property: Property, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const contact = property.source?.rmContact;
+    if (contact) {
+      const msg = `Hi ${property.source?.dedicatedRM || 'RM'}! I'm an agent looking for more info on project *${property.title}* (ID: ${property.id}). Please assist.`;
+      window.open(`https://wa.me/${contact.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    } else {
+      alert('RM contact information is not available for this property.');
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -192,6 +203,7 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
             onView={() => setViewingProperty(property)}
             onShare={() => setSharingProperty(property)}
             onBook={() => setBookingProperty(property)}
+            onContactRM={(e) => handleContactRM(property, e)}
           />
         ))}
       </main>
@@ -229,6 +241,7 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
           onEdit={() => { onEditProperty(viewingProperty); setViewingProperty(null); }}
           onShare={() => setSharingProperty(viewingProperty)}
           onBook={() => setBookingProperty(viewingProperty)}
+          onContactRM={() => handleContactRM(viewingProperty)}
         />
       )}
 
@@ -266,8 +279,9 @@ const PropertyCard: React.FC<{
   onEdit: () => void, 
   onView: () => void,
   onShare: () => void,
-  onBook: () => void
-}> = ({ property, isSelected, onToggle, onEdit, onView, onShare, onBook }) => {
+  onBook: () => void,
+  onContactRM: (e: React.MouseEvent) => void
+}> = ({ property, isSelected, onToggle, onEdit, onView, onShare, onBook, onContactRM }) => {
   const mainPhoto = property.media?.photos?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=400';
 
   const nearestPossession = useMemo(() => {
@@ -363,20 +377,27 @@ const PropertyCard: React.FC<{
          </div>
       </div>
 
-      <div className="mt-5 flex gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         <button 
           onClick={(e) => { e.stopPropagation(); onShare(); }}
-          className="flex-1 py-3.5 btn-3d btn-3d-white rounded-2xl flex items-center justify-center gap-2 transition-all group"
+          className="flex-1 min-w-[80px] py-3 btn-3d btn-3d-white rounded-2xl flex items-center justify-center gap-2 transition-all group"
         >
           <i className="fas fa-share-alt text-[10px] text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"></i>
           <span className="text-[9px] font-black uppercase tracking-widest transition-colors">Share</span>
         </button>
         <button 
-          onClick={(e) => { e.stopPropagation(); onBook(); }}
-          className="flex-[1.5] py-3.5 btn-3d btn-3d-indigo text-white rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-100 dark:shadow-indigo-900/40"
+          onClick={onContactRM}
+          className="flex-1 min-w-[80px] py-3 btn-3d btn-3d-amber text-white rounded-2xl flex items-center justify-center gap-2 transition-all group"
         >
-          <i className="fas fa-calendar-plus text-sm"></i>
-          <span className="text-[9px] font-black uppercase tracking-widest transition-colors">Schedule Visit</span>
+          <i className="fas fa-headset text-[10px]"></i>
+          <span className="text-[9px] font-black uppercase tracking-widest transition-colors">RM</span>
+        </button>
+        <button 
+          onClick={(e) => { e.stopPropagation(); onBook(); }}
+          className="flex-[2] min-w-[120px] py-3 btn-3d btn-3d-indigo text-white rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-100 dark:shadow-indigo-900/40"
+        >
+          <i className="fas fa-calendar-plus text-xs"></i>
+          <span className="text-[9px] font-black uppercase tracking-widest transition-colors">Schedule</span>
         </button>
       </div>
     </div>
@@ -388,8 +409,9 @@ const PropertyDetailsModal: React.FC<{
   onClose: () => void, 
   onEdit: () => void,
   onShare: () => void,
-  onBook: () => void
-}> = ({ property, onClose, onEdit, onShare, onBook }) => {
+  onBook: () => void,
+  onContactRM: () => void
+}> = ({ property, onClose, onEdit, onShare, onBook, onContactRM }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'configs' | 'amenities' | 'docs'>('overview');
   const [activePhoto, setActivePhoto] = useState(property.media?.photos?.[0] || '');
 
@@ -452,6 +474,23 @@ const PropertyDetailsModal: React.FC<{
                            <img src={p} className="w-full h-full object-cover" alt={`Thumb ${idx}`} />
                         </button>
                       ))}
+                   </div>
+
+                   {/* RM Support Card */}
+                   <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800 p-6 rounded-[2rem] flex items-center justify-between group transition-all">
+                      <div className="flex items-center gap-4">
+                         <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200 dark:shadow-none transition-transform group-hover:scale-110">
+                            <i className="fas fa-headset text-lg"></i>
+                         </div>
+                         <div>
+                            <p className="text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">Project Support RM</p>
+                            <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase">{property.source?.dedicatedRM || 'Not Assigned'}</h4>
+                            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Response TAT: {property.source?.tat || 'Instant'}</p>
+                         </div>
+                      </div>
+                      <button onClick={onContactRM} className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center text-amber-600 shadow-sm border border-amber-100 dark:border-slate-700 hover:bg-amber-600 hover:text-white transition-all">
+                         <i className="fab fa-whatsapp"></i>
+                      </button>
                    </div>
                 </div>
 
@@ -532,7 +571,7 @@ const PropertyDetailsModal: React.FC<{
                   </a>
                 ))}
                 {(property.media?.documents || []).length === 0 && (
-                  <div className="col-span-full py-20 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                  <div className="col-span-full py-20 text-center border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-[3rem]">
                      <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">No documents attached</p>
                   </div>
                 )}
@@ -540,9 +579,10 @@ const PropertyDetailsModal: React.FC<{
            )}
         </div>
 
-        <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex gap-4 shrink-0 transition-colors">
-           <button onClick={onShare} className="flex-1 py-5 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3"><i className="fas fa-share"></i> Share Details</button>
-           <button onClick={onBook} className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-indigo-900/40 flex items-center justify-center gap-3"><i className="fas fa-calendar-check"></i> Schedule Site Visit</button>
+        <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex flex-wrap gap-4 shrink-0 transition-colors">
+           <button onClick={onShare} className="flex-1 min-w-[120px] py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3"><i className="fas fa-share"></i> Share Details</button>
+           <button onClick={onContactRM} className="flex-1 min-w-[120px] py-4 btn-3d btn-3d-amber text-white rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3"><i className="fas fa-headset"></i> Contact RM</button>
+           <button onClick={onBook} className="flex-[2] min-w-[200px] py-4 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-indigo-900/40 flex items-center justify-center gap-3"><i className="fas fa-calendar-check"></i> Schedule Site Visit</button>
         </div>
       </div>
     </div>
