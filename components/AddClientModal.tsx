@@ -6,6 +6,7 @@ interface AddClientModalProps {
   initialData?: Client;
   onClose: () => void;
   onSubmit: (client: Client) => void;
+  availableLocations?: string[];
 }
 
 const FORM_SECTIONS = [
@@ -17,7 +18,7 @@ const FORM_SECTIONS = [
   { id: 'segment', label: '6. Relationships' }
 ];
 
-const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, onSubmit }) => {
+const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, onSubmit, availableLocations = [] }) => {
   const [activeTab, setActiveTab] = useState('basic');
   const [formData, setFormData] = useState<Partial<Client>>(initialData || {
     salutation: 'Mr.',
@@ -97,23 +98,28 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
     }
   };
 
+  // Fallback locations if no properties exist yet to provide options
+  const displayLocations = availableLocations.length > 0 
+    ? availableLocations 
+    : ['South Nagpur', 'Mihan', 'Wardha Road', 'Manish Nagar', 'Civil Lines', 'Sonegaon'];
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-end sm:items-center justify-center p-0 sm:p-6">
-      <div className="bg-white w-full max-w-4xl h-[95vh] sm:h-auto sm:max-h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-4xl h-[95vh] sm:h-auto sm:max-h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up transition-colors">
         {/* Header */}
-        <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-white shrink-0">
+        <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-white dark:bg-slate-800 shrink-0">
           <div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">
+            <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight uppercase">
               {initialData ? 'Edit Client Profile' : 'New Client Profile'}
             </h2>
             <div className="flex items-center gap-3 mt-2">
-              <div className="h-2 w-32 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-2 w-32 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-indigo-600 transition-all duration-700 shadow-[0_0_10px_rgba(79,70,229,0.4)]" 
                   style={{ width: `${formData.nurturingScore}%` }}
                 ></div>
               </div>
-              <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-lg">
+              <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-lg">
                 Lead Score: {formData.nurturingScore}%
               </span>
             </div>
@@ -124,7 +130,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
         </div>
 
         {/* Horizontal Nav */}
-        <div className="px-6 shrink-0 border-b border-slate-50">
+        <div className="px-6 shrink-0 border-b border-slate-50 dark:border-slate-700">
           <div 
             ref={navRef}
             className="flex items-center gap-2 overflow-x-auto hide-scrollbar p-2"
@@ -137,7 +143,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
                 className={`px-5 py-3 text-[9px] font-black uppercase tracking-widest whitespace-nowrap rounded-xl transition-all ${
                   activeTab === s.id 
                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' 
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                    : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
                 {s.label}
@@ -181,7 +187,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <InputField label="Requirement Type" type="select" value={formData.requirementType} onChange={v => handleChange('requirementType', v)} options={['Buy', 'Rent', 'Invest']} />
               <Multiselect label="Property Types" field="propertyTypes" value={formData.propertyTypes || []} onToggle={handleToggleMultiselect} options={['Apartment', 'Villa', 'Plot', 'Commercial', 'Shop', 'Warehouse']} />
-              <Multiselect label="Preferred Areas" field="locations" value={formData.locations || []} onToggle={handleToggleMultiselect} options={['South Nagpur', 'Mihan', 'Wardha Road', 'Manish Nagar', 'Civil Lines', 'Sonegaon']} />
+              <Multiselect label="Preferred Areas (Derived from Inventory)" field="locations" value={formData.locations || []} onToggle={handleToggleMultiselect} options={displayLocations} />
               <div className="grid grid-cols-2 gap-4">
                 <InputField label="Min Budget" type="number" value={formData.budgetMin} onChange={v => handleChange('budgetMin', Number(v))} />
                 <InputField label="Max Budget" type="number" value={formData.budgetMax} onChange={v => handleChange('budgetMax', Number(v))} />
@@ -213,7 +219,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
         </div>
 
         {/* Footer Actions */}
-        <div className="p-8 border-t bg-slate-50 flex gap-4 shrink-0">
+        <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex gap-4 shrink-0 transition-colors">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white font-black text-[10px] uppercase rounded-2xl">Discard</button>
           <button onClick={handleSubmit} className="flex-[2] py-4 btn-3d btn-3d-indigo text-white font-black text-[10px] uppercase rounded-2xl">
             {initialData ? 'Update Client Profile' : 'Save Client Profile'}
@@ -227,10 +233,10 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
 const Section: React.FC<{ id: string, title: string, subtitle: string, children: React.ReactNode }> = ({ id, title, subtitle, children }) => (
   <div id={`form-section-${id}`} className="space-y-6">
     <div>
-      <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">{title}</h3>
-      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{subtitle}</p>
+      <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{title}</h3>
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">{subtitle}</p>
     </div>
-    <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+    <div className="bg-slate-50/50 dark:bg-slate-900/30 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors">
       {children}
     </div>
   </div>
@@ -238,13 +244,13 @@ const Section: React.FC<{ id: string, title: string, subtitle: string, children:
 
 const InputField: React.FC<{ label: string, value: any, onChange: (v: any) => void, type?: string, options?: string[], required?: boolean, placeholder?: string }> = ({ label, value, onChange, type = 'text', options, required, placeholder }) => (
   <div className="space-y-1.5">
-    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">{label} {required && <span className="text-red-500">*</span>}</label>
+    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label} {required && <span className="text-red-500">*</span>}</label>
     {type === 'select' ? (
       <div className="relative">
-        <select value={value} onChange={e => onChange(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black appearance-none outline-none focus:border-indigo-600 shadow-sm">
+        <select value={value} onChange={e => onChange(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-black dark:text-white appearance-none outline-none focus:border-indigo-600 shadow-sm transition-colors">
           {options?.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
-        <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+        <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-500 pointer-events-none text-[10px]"></i>
       </div>
     ) : (
       <input 
@@ -252,7 +258,7 @@ const InputField: React.FC<{ label: string, value: any, onChange: (v: any) => vo
         value={value || ''} 
         onChange={e => onChange(e.target.value)} 
         placeholder={placeholder}
-        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-600 shadow-sm" 
+        className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 shadow-sm transition-colors" 
       />
     )}
   </div>
@@ -260,7 +266,7 @@ const InputField: React.FC<{ label: string, value: any, onChange: (v: any) => vo
 
 const Multiselect: React.FC<{ label: string, field: keyof Client, value: string[], onToggle: (f: keyof Client, item: string) => void, options: string[] }> = ({ label, field, value, onToggle, options }) => (
   <div className="col-span-full space-y-2">
-    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">{label}</label>
+    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label>
     <div className="flex flex-wrap gap-2">
       {options.map(opt => (
         <button
@@ -270,7 +276,7 @@ const Multiselect: React.FC<{ label: string, field: keyof Client, value: string[
           className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
             value.includes(opt) 
               ? 'bg-indigo-600 text-white shadow-md' 
-              : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-400'
+              : 'bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-600 hover:border-indigo-400'
           }`}
         >
           {opt}

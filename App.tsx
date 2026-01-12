@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -91,6 +91,14 @@ const AppContent: React.FC = () => {
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  const availableLocations = useMemo(() => {
+    const locs = new Set<string>();
+    properties.forEach(p => {
+      if (p.location?.area) locs.add(p.location.area);
+    });
+    return Array.from(locs).sort();
+  }, [properties]);
 
   const handleGlobalAdd = () => {
     switch (location.pathname) {
@@ -219,8 +227,8 @@ const AppContent: React.FC = () => {
       <main className={`flex-grow ${['/clients', '/visits', '/properties'].includes(location.pathname) ? 'pt-32' : 'pt-20'} pb-28 px-4 max-w-7xl mx-auto w-full`}>
         <Routes>
           <Route path="/" element={<Dashboard clients={clients} properties={properties} visits={visits} />} />
-          <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleUpdateClient} onAddVisit={handleAddVisit} />} />
-          <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={() => setIsBookVisitOpen(true)} />} />
+          <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleUpdateClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} />} />
+          <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleUpdateClient} />} />
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/emi" element={<EmiCalculator />} />
@@ -233,6 +241,7 @@ const AppContent: React.FC = () => {
         <AddClientModal 
           onClose={() => setIsAddClientOpen(false)} 
           onSubmit={handleAddClient} 
+          availableLocations={availableLocations}
         />
       )}
 

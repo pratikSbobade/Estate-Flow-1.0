@@ -1,28 +1,37 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
-import { SiteVisit, ClientStatus } from '../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { SiteVisit, ClientStatus, Client, Property, ClientInteraction } from '../types';
+import BookVisitModal from '../components/BookVisitModal';
 
 interface VisitsPageProps {
   visits: SiteVisit[];
   searchQuery: string;
   onUpdateVisit: (updatedVisit: SiteVisit) => void;
-  onAddVisit: () => void;
-  onBookAtDate?: (date: string) => void;
+  onAddVisit: (visit: SiteVisit) => void;
+  onManualAddClick: () => void;
+  clients: Client[];
+  properties: Property[];
+  onUpdateClient: (client: Client) => void;
 }
 
-type SortField = 'date' | 'name' | 'status';
-
-const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVisit, onAddVisit, onBookAtDate }) => {
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
-  const [activeModal, setActiveModal] = useState<{visit: SiteVisit, type: 'feedback' | 'reschedule' | 'cancel' | 'details'} | null>(null);
+const VisitsPage: React.FC<VisitsPageProps> = ({ 
+  visits, 
+  searchQuery, 
+  onUpdateVisit, 
+  onAddVisit, 
+  clients,
+  properties,
+  onUpdateClient
+}) => {
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list');
+  const [activeModal, setActiveModal] = useState<{visit: SiteVisit, type: 'feedback' | 'reschedule' | 'cancel' | 'details' | 'share_details' | 'schedule_second'} | null>(null);
   const [dayAgenda, setDayAgenda] = useState<{ date: string, visits: SiteVisit[] } | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
-  const [isSortOpen, setIsSortOpen] = useState(false);
-  const [sortField, setSortField] = useState<SortField>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [bookingRequest, setBookingRequest] = useState<{client: Client, property: Property} | null>(null);
   
+  const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
@@ -32,41 +41,48 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
     }
   }, [location.state]);
 
-  const filteredAndSortedVisits = useMemo(() => {
-    let result = visits.filter(v => 
+  const filteredVisits = useMemo(() => {
+    return visits.filter(v => 
       v.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       v.propertyName.toLowerCase().includes(searchQuery.toLowerCase())
     );
+  }, [visits, searchQuery]);
 
-    result.sort((a, b) => {
-      let comparison = 0;
-      if (sortField === 'date') {
-        comparison = new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
-      } else if (sortField === 'name') {
-        comparison = a.clientName.localeCompare(b.clientName);
-      } else if (sortField === 'status') {
-        comparison = a.status.localeCompare(b.status);
+  const groupedByClient = useMemo(() => {
+    const groups: Record<string, { client: Client | undefined, visits: SiteVisit[] }> = {};
+    filteredVisits.forEach(v => {
+      if (!groups[v.clientId]) {
+        groups[v.clientId] = { 
+          client: clients.find(c => c.id === v.clientId),
+          visits: [] 
+        };
       }
-      return sortOrder === 'asc' ? comparison : -comparison;
+      groups[v.clientId].visits.push(v);
     });
 
-    return result;
-  }, [visits, searchQuery, sortField, sortOrder]);
+    Object.values(groups).forEach(g => {
+      g.visits.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
+    });
+
+    return Object.values(groups).sort((a, b) => {
+       const dateA = a.visits[0] ? new Date(a.visits[0].scheduledAt).getTime() : 0;
+       const dateB = b.visits[0] ? new Date(b.visits[0].scheduledAt).getTime() : 0;
+       return dateB - dateA;
+    });
+  }, [filteredVisits, clients]);
 
   const handleUpdateVisit = (visitId: string, updates: Partial<SiteVisit>) => {
     const visit = visits.find(v => v.id === visitId);
     if (visit) {
-      const { reason, ...cleanUpdates } = updates as any;
-      
       const historyUpdate = {
-        status: cleanUpdates.status || visit.status,
+        status: (updates.status as string) || visit.status,
         date: new Date().toISOString(),
-        note: reason || (cleanUpdates.status === 'Completed' ? 'Feedback submitted and visit closed' : 'Status updated via Visit Management')
+        note: (updates as any).reason || 'Status updated via Visit Manager'
       };
 
       onUpdateVisit({ 
         ...visit, 
-        ...cleanUpdates,
+        ...updates,
         history: [...(visit.history || []), historyUpdate]
       });
     }
@@ -77,25 +93,29 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
     setViewMode('list');
     setDayAgenda(null);
     setHighlightedVisitId(visitId);
-    
     setTimeout(() => {
       const element = document.getElementById(`visit-card-${visitId}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
-
     setTimeout(() => setHighlightedVisitId(null), 3000);
   };
 
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortOrder('asc');
+  const handlePerformNextAction = (visit: SiteVisit) => {
+    if (!visit.feedback) return;
+    const { nextAction } = visit.feedback;
+
+    const selClient = clients.find(c => c.id === visit.clientId);
+    const selProperty = properties.find(p => p.id === visit.propertyId);
+
+    if (['Second Visit', 'Negotiation Meeting'].includes(nextAction)) {
+      if (selClient && selProperty) {
+        setBookingRequest({ client: selClient, property: selProperty });
+      }
+    } else if (nextAction === 'Deal') {
+      setActiveModal({ visit, type: 'feedback' });
+    } else if (['Send Details', 'Send Quotation'].includes(nextAction)) {
+      setActiveModal({ visit, type: 'share_details' });
     }
-    setIsSortOpen(false);
   };
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -112,408 +132,560 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Visit Management</h1>
-          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest">{filteredAndSortedVisits.length} Records</p>
+          <h1 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">Visit Management</h1>
+          <p className="text-slate-400 dark:text-slate-500 text-[9px] font-bold uppercase tracking-widest">{groupedByClient.length} Leads in Pipeline</p>
         </div>
-        <div className="flex bg-white shadow-sm border border-slate-100 rounded-xl p-1 gap-1 relative">
-          <button 
-            onClick={() => setIsSortOpen(!isSortOpen)}
-            className={`w-8 h-8 rounded-lg transition-all flex items-center justify-center ${isSortOpen ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-            title="Sort Visits"
-          >
-            <i className="fas fa-sort-amount-down text-[10px]"></i>
-          </button>
-
-          {isSortOpen && (
-            <div className="absolute top-full mt-2 right-0 w-44 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 p-2 animate-slide-up">
-              {[
-                { id: 'date', label: 'By Date' },
-                { id: 'name', label: 'By Client' },
-                { id: 'status', label: 'By Status' }
-              ].map(opt => (
-                <button 
-                  key={opt.id}
-                  onClick={() => toggleSort(opt.id as SortField)}
-                  className={`w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-between ${sortField === opt.id ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50'}`}
-                >
-                  {opt.label}
-                  {sortField === opt.id && <i className={`fas fa-chevron-${sortOrder === 'asc' ? 'up' : 'down'} text-[8px]`}></i>}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="w-[1px] bg-slate-100 mx-0.5"></div>
-
-          <button 
-            onClick={() => setViewMode('calendar')}
-            className={`w-8 h-8 rounded-lg transition-all flex items-center justify-center ${viewMode === 'calendar' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            <i className="fas fa-calendar-alt text-[10px]"></i>
-          </button>
-          <button 
-            onClick={() => setViewMode('list')}
-            className={`w-8 h-8 rounded-lg transition-all flex items-center justify-center ${viewMode === 'list' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            <i className="fas fa-list text-[10px]"></i>
-          </button>
+        <div className="flex bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 rounded-xl p-1 gap-1">
+          <button onClick={() => setViewMode('calendar')} className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${viewMode === 'calendar' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50'}`} aria-label="Calendar View"><i className="fas fa-calendar-alt text-[11px]"></i></button>
+          <button onClick={() => setViewMode('list')} className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${viewMode === 'list' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-50'}`} aria-label="List View"><i className="fas fa-id-card text-[11px]"></i></button>
         </div>
       </div>
 
       {viewMode === 'calendar' ? (
-        <div className="card-neo p-6 rounded-[2.5rem] bg-white border border-slate-100">
-          <div className="flex items-center justify-between mb-6 px-2">
-            <h2 className="font-black text-slate-800 uppercase text-sm tracking-widest">
-              {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-            </h2>
-            <div className="flex gap-2">
-              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="w-8 h-8 rounded-lg border border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50">
-                <i className="fas fa-chevron-left text-[10px]"></i>
-              </button>
-              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="w-8 h-8 rounded-lg border border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50">
-                <i className="fas fa-chevron-right text-[10px]"></i>
-              </button>
+        <div className="space-y-6">
+          <div className="card-neo p-6 rounded-[2.5rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 transition-colors">
+            <div className="flex items-center justify-between mb-6 px-2">
+              <h2 className="font-black text-slate-800 dark:text-white uppercase text-sm tracking-widest">{currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
+              <div className="flex gap-2">
+                <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="w-8 h-8 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-400 hover:text-indigo-600 transition-colors"><i className="fas fa-chevron-left text-[10px]"></i></button>
+                <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="w-8 h-8 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-400 hover:text-indigo-600 transition-colors"><i className="fas fa-chevron-right text-[10px]"></i></button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-2">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="text-center text-[9px] font-black text-slate-400 uppercase py-2">{d}</div>)}
+              {calendarDays.map((day, i) => {
+                const dateStr = day ? `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
+                const dayVisits = day ? visits.filter(v => v.scheduledAt.startsWith(dateStr)) : [];
+                const isToday = day === new Date().getDate() && currentMonth.getMonth() === new Date().getMonth();
+                const hasVisits = dayVisits.length > 0;
+                
+                return (
+                  <div 
+                    key={i} 
+                    onClick={() => day && setDayAgenda({ date: dateStr, visits: dayVisits })} 
+                    className={`aspect-square rounded-2xl relative border cursor-pointer transition-all group ${
+                      day ? (
+                        isToday ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-50 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-indigo-200'
+                      ) : 'border-transparent'
+                    }`}
+                  >
+                    {day && (
+                      <>
+                        <span className={`absolute top-2 left-2 text-[10px] font-black ${isToday ? 'text-indigo-600' : 'text-slate-400'}`}>{day}</span>
+                        {hasVisits && (
+                          <div className="absolute top-2 right-2 flex gap-0.5">
+                            <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pt-4 px-1">
+                          {dayVisits.slice(0, 2).map(v => (
+                            <div key={v.id} className={`w-full py-0.5 rounded-md text-[6px] font-black truncate px-1 text-white text-center shadow-sm ${v.status === 'Completed' ? 'bg-emerald-500' : 'bg-indigo-600'}`}>
+                              {v.clientName.split(' ')[0]}
+                            </div>
+                          ))}
+                          {dayVisits.length > 2 && <span className="text-[6px] font-black text-slate-300">+{dayVisits.length - 2} more</span>}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
           
-          <div className="grid grid-cols-7 gap-2">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-              <div key={d} className="text-center text-[9px] font-black text-slate-400 uppercase py-2 tracking-widest">{d}</div>
-            ))}
-            {calendarDays.map((day, i) => {
-              const dateStr = day ? `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
-              const dayVisits = day ? visits.filter(v => v.scheduledAt.startsWith(dateStr)) : [];
-              const isToday = day === new Date().getDate() && currentMonth.getMonth() === new Date().getMonth();
-              
-              return (
-                <div 
-                  key={i} 
-                  onClick={() => {
-                    if (!day) return;
-                    setDayAgenda({ date: dateStr, visits: dayVisits });
-                  }}
-                  className={`aspect-square rounded-2xl relative border cursor-pointer transition-all ${day ? (isToday ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-50 bg-white hover:border-indigo-200 hover:shadow-sm') : 'border-transparent bg-transparent'}`}
-                >
-                  {day && (
-                    <>
-                      <span className={`absolute top-2 left-2 text-[10px] font-black ${isToday ? 'text-indigo-600' : 'text-slate-400'}`}>{day}</span>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pt-4 px-1">
-                        {dayVisits.slice(0, 2).map(v => (
-                          <div 
-                            key={v.id}
-                            onClick={(e) => { e.stopPropagation(); navigateToListVisit(v.id); }}
-                            className={`w-full py-0.5 rounded-md text-[6px] font-black truncate px-1 text-white shadow-sm text-center transition-transform hover:scale-105 ${v.status === 'Completed' ? 'bg-emerald-500' : v.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'}`}
-                          >
-                            {v.clientName.split(' ')[0]}
-                          </div>
-                        ))}
-                        {dayVisits.length > 2 && <span className="text-[7px] font-black text-slate-300">+{dayVisits.length - 2} more</span>}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {dayAgenda && (
+            <div className="animate-slide-up">
+              <DayAgendaView 
+                date={dayAgenda.date} 
+                visits={dayAgenda.visits} 
+                onClose={() => setDayAgenda(null)} 
+                onViewVisit={navigateToListVisit}
+                clients={clients}
+              />
+            </div>
+          )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredAndSortedVisits.map(visit => (
-            <VisitCard 
-              key={visit.id} 
-              visit={visit} 
-              isHighlighted={highlightedVisitId === visit.id}
-              onAction={(type) => setActiveModal({ visit, type })} 
-              onNextAction={() => alert(`Initiating Next Action: ${visit.feedback?.nextAction}`)} 
+        <div className="space-y-10">
+          {groupedByClient.map(group => (
+            <ClientVisitGroup 
+              key={group.client?.id || Math.random()} 
+              group={group} 
+              onAction={(visit, type) => setActiveModal({ visit, type })} 
+              highlightedVisitId={highlightedVisitId} 
+              onNextAction={handlePerformNextAction}
+              properties={properties}
             />
           ))}
-          {filteredAndSortedVisits.length === 0 && (
-            <div className="py-20 text-center bg-white rounded-[3rem] border border-dashed border-slate-200">
-              <i className="fas fa-calendar-day text-slate-200 text-4xl mb-4"></i>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No visits matching search</p>
+          {groupedByClient.length === 0 && (
+            <div className="py-24 text-center bg-white dark:bg-slate-800 rounded-[3rem] border border-dashed border-slate-200 dark:border-slate-700">
+               <div className="w-20 h-20 bg-slate-50 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <i className="fas fa-calendar-day text-slate-300 text-3xl"></i>
+               </div>
+               <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No visit records found</p>
             </div>
           )}
         </div>
       )}
 
-      {dayAgenda && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[210] flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 animate-slide-up flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Day Agenda</h3>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(dayAgenda.date).toLocaleDateString([], { dateStyle: 'long' })}</p>
-              </div>
-              <button onClick={() => setDayAgenda(null)} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-            <div className="overflow-y-auto space-y-4 pr-2 hide-scrollbar flex-1">
-              {dayAgenda.visits.map(v => (
-                <div 
-                  key={v.id} 
-                  onClick={() => navigateToListVisit(v.id)}
-                  className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-all group relative cursor-pointer active:scale-95"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-[10px] font-black text-indigo-600 uppercase leading-none">
-                      {new Date(v.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-lg border uppercase ${
-                      v.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
-                    }`}>
-                      {v.status}
-                    </span>
-                  </div>
-                  <h4 className="font-black text-slate-800 text-sm uppercase leading-tight">{v.clientName}</h4>
-                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-1">{v.propertyName}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeModal?.type === 'details' && (
-        <VisitDetailsPopup visit={activeModal.visit} onClose={() => setActiveModal(null)} onAction={(type) => setActiveModal({visit: activeModal.visit, type})} />
-      )}
-      {activeModal?.type === 'reschedule' && (
-        <RescheduleModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onConfirm={(date, reason) => handleUpdateVisit(activeModal.visit.id, { scheduledAt: date, status: 'Rescheduled', reason } as any)} />
-      )}
-      {activeModal?.type === 'cancel' && (
-        <CancelModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onConfirm={(reason) => handleUpdateVisit(activeModal.visit.id, { status: 'Cancelled', reason } as any)} />
+      {activeModal?.type === 'share_details' && (
+        <ShareDetailsModal 
+          visit={activeModal.visit} 
+          client={clients.find(c => c.id === activeModal.visit.clientId)} 
+          property={properties.find(p => p.id === activeModal.visit.propertyId)} 
+          onClose={() => setActiveModal(null)} 
+        />
       )}
       {activeModal?.type === 'feedback' && (
         <FeedbackModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onSubmit={(data) => handleUpdateVisit(activeModal.visit.id, { feedback: data, status: 'Completed' })} />
       )}
-    </div>
-  );
-};
-
-const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction: (type: any) => void, onNextAction: () => void }> = ({ visit, isHighlighted, onAction, onNextAction }) => {
-  const [showHistory, setShowHistory] = useState(false);
-  const date = new Date(visit.scheduledAt);
-  const statusColors = {
-    Scheduled: 'bg-indigo-50 text-indigo-600 border-indigo-100',
-    Completed: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-    Cancelled: 'bg-red-50 text-red-600 border-red-100',
-    Rescheduled: 'bg-amber-50 text-amber-600 border-amber-100'
-  };
-
-  const isCompleted = visit.status === 'Completed';
-
-  return (
-    <div 
-      id={`visit-card-${visit.id}`}
-      className={`card-neo rounded-[2.5rem] overflow-hidden border transition-all duration-500 ${isHighlighted ? 'ring-4 ring-indigo-500/30 scale-[1.02] border-indigo-400 shadow-2xl' : ''} ${isCompleted ? 'border-emerald-100 bg-emerald-50/10 shadow-none' : 'border-slate-100 hover:shadow-xl'}`}
-    >
-      <div className="p-6">
-        <div className="flex flex-col sm:flex-row justify-between gap-4">
-          <div className="flex gap-4">
-            <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center shrink-0 border transition-colors ${isCompleted ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
-              <span className={`text-[10px] font-black uppercase leading-none mb-1 ${isCompleted ? 'text-emerald-600' : 'text-indigo-600'}`}>{date.toLocaleString('default', { month: 'short' })}</span>
-              <span className="text-2xl font-black text-slate-800 leading-none">{date.getDate()}</span>
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-3 mb-1">
-                <h3 className="font-black text-slate-800 text-lg uppercase tracking-tight truncate">{visit.clientName}</h3>
-                <span className={`px-2 py-0.5 rounded-lg border text-[8px] font-black uppercase ${statusColors[visit.status]}`}>
-                  {visit.status}
-                </span>
-              </div>
-              <p className="text-xs font-bold text-slate-500 flex items-center gap-2">
-                <i className={`fas fa-building ${isCompleted ? 'text-emerald-400' : 'text-indigo-400'}`}></i> {visit.propertyName}
-              </p>
-              <div className="flex items-center gap-4 mt-2">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                  <i className="fas fa-clock"></i> {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-                <button 
-                  onClick={() => setShowHistory(!showHistory)}
-                  className={`text-[9px] font-black uppercase tracking-widest hover:underline ${isCompleted ? 'text-emerald-600' : 'text-indigo-600'}`}
-                >
-                  {showHistory ? 'Hide Details' : 'View Full Context'}
-                </button>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2 sm:self-start">
-            {!isCompleted ? (
-              <>
-                <button onClick={() => onAction('reschedule')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-white rounded-xl text-[9px] font-black uppercase tracking-widest">Reschedule</button>
-                <button onClick={() => onAction('cancel')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-red text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-red-100">Cancel</button>
-                <button onClick={() => onAction('feedback')} className="flex-1 sm:flex-none px-6 py-2.5 btn-3d btn-3d-indigo text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-indigo-100">Feedback</button>
-              </>
-            ) : (
-              <button 
-                onClick={onNextAction}
-                className="flex-1 sm:flex-none px-6 py-4 btn-3d btn-3d-emerald text-white rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-100 flex items-center gap-2"
-              >
-                <i className="fas fa-arrow-right"></i>
-                Perform Next Action: {visit.feedback?.nextAction || 'Follow Up'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Inline Feedback Preview when Completed */}
-        {isCompleted && visit.feedback && !showHistory && (
-          <div 
-            onClick={() => setShowHistory(true)}
-            className="mt-4 p-4 bg-white/60 border border-emerald-100 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-emerald-50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex text-amber-400 text-[10px]">
-                {Array.from({length: 5}).map((_, i) => (
-                  <i key={i} className={`fas fa-star ${i < (visit.feedback?.rating || 0) ? 'text-amber-400' : 'text-slate-200'}`}></i>
-                ))}
-              </div>
-              <p className="text-[10px] font-bold text-slate-600 italic line-clamp-1">"{visit.feedback.notes}"</p>
-            </div>
-            <div className="flex gap-2">
-               <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">View Full Context</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {showHistory && (
-        <div className="px-6 pb-6 bg-slate-50/50 border-t border-slate-50 animate-slide-up pt-6 space-y-6">
-          {visit.feedback && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Visit Feedback</h4>
-                  <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="flex text-amber-400 text-xs">
-                        {Array.from({length: 5}).map((_, i) => (
-                          <i key={i} className={`fas fa-star ${i < (visit.feedback?.rating || 0) ? 'text-amber-400' : 'text-slate-200'}`}></i>
-                        ))}
-                      </div>
-                      <span className="text-[10px] font-black text-slate-400">({visit.feedback.rating}/5)</span>
-                    </div>
-                    <p className="text-xs font-medium text-slate-700 leading-relaxed italic">"{visit.feedback.notes}"</p>
-                    <div className="grid grid-cols-2 gap-3 mt-4">
-                      <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-100">
-                        <p className="text-[8px] font-black text-emerald-600 uppercase mb-1">What they liked</p>
-                        <p className="text-[10px] font-bold text-slate-600">{visit.feedback.likes || 'N/A'}</p>
-                      </div>
-                      <div className="p-2 bg-red-50 rounded-xl border border-red-100">
-                        <p className="text-[8px] font-black text-red-600 uppercase mb-1">Their concerns</p>
-                        <p className="text-[10px] font-bold text-slate-600">{visit.feedback.dislikes || 'N/A'}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Next Steps</h4>
-                  <div className="bg-indigo-600 p-4 rounded-2xl shadow-lg shadow-indigo-100 text-white">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Proposed Action</p>
-                        <p className="text-sm font-black uppercase">{visit.feedback.nextAction}</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center">
-                      <div>
-                        <p className="text-[8px] font-black text-indigo-200 uppercase">Follow-up Date</p>
-                        <p className="text-[10px] font-bold">{visit.feedback.nextFollowUp ? new Date(visit.feedback.nextFollowUp).toLocaleDateString([], { dateStyle: 'medium' }) : 'TBD'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[8px] font-black text-indigo-200 uppercase">Probability</p>
-                        <p className="text-[10px] font-bold">{visit.feedback.probability}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Visit Timeline</h4>
-            <div className="space-y-4">
-              {(visit.history || [{ status: 'Scheduled', date: visit.scheduledAt, note: 'Initial Appointment' }]).map((h, i) => (
-                <div key={i} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm mt-1 shrink-0 ${
-                      h.status === 'Completed' ? 'bg-emerald-500' : h.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'
-                    }`}></div>
-                    {i < (visit.history?.length || 1) - 1 && <div className="w-[1px] flex-grow bg-slate-200 my-1"></div>}
-                  </div>
-                  <div className="min-w-0 pb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black text-slate-700 uppercase">{h.status}</span>
-                      <span className="text-[8px] font-bold text-slate-400">{new Date(h.date).toLocaleDateString()}</span>
-                    </div>
-                    {h.note && <p className="text-[10px] text-slate-500 font-medium italic mt-0.5 line-clamp-1">{h.note}</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {activeModal?.type === 'reschedule' && (
+        <RescheduleModal visit={activeModal.visit} onClose={() => setActiveModal(null)} onConfirm={(date, reason) => handleUpdateVisit(activeModal.visit.id, { scheduledAt: date, status: 'Rescheduled', reason } as any)} />
+      )}
+      
+      {bookingRequest && (
+        <BookVisitModal 
+          client={bookingRequest.client}
+          property={bookingRequest.property}
+          clients={clients}
+          properties={properties}
+          onClose={() => setBookingRequest(null)}
+          onSubmit={(v) => { onAddVisit(v); setBookingRequest(null); }}
+        />
       )}
     </div>
   );
 };
 
-const VisitDetailsPopup: React.FC<{ visit: SiteVisit, onClose: () => void, onAction: (type: any) => void }> = ({ visit, onClose, onAction }) => (
-  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-6">
-    <div className="bg-white w-full max-sm rounded-[2.5rem] shadow-2xl p-8 animate-slide-up space-y-6">
-      <div className="flex justify-between items-start">
-        <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
-          <i className="fas fa-calendar-day text-xl"></i>
+const DayAgendaView: React.FC<{ 
+  date: string, 
+  visits: SiteVisit[], 
+  onClose: () => void, 
+  onViewVisit: (id: string) => void,
+  clients: Client[]
+}> = ({ date, visits, onClose, onViewVisit, clients }) => {
+  const dateObj = new Date(date);
+  const displayDate = dateObj.toLocaleDateString('default', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <div className="card-neo p-8 rounded-[2.5rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Day Agenda</h3>
+          <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1">{displayDate}</p>
         </div>
-        <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">
+        <button onClick={onClose} className="w-10 h-10 bg-slate-50 dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400 transition-colors">
           <i className="fas fa-times"></i>
         </button>
       </div>
-      <div>
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">{visit.clientName}</h3>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Visit at {visit.propertyName}</p>
-      </div>
-      <div className="space-y-3">
-        <div className="flex justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date/Time</span>
-          <span className="text-xs font-black text-slate-700">{new Date(visit.scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        {visit.status !== 'Completed' ? (
-          <>
-            <button onClick={() => { onAction('reschedule'); }} className="py-4 btn-3d btn-3d-white rounded-2xl text-[10px] font-black uppercase">Reschedule</button>
-            <button onClick={() => { onAction('feedback'); }} className="py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase">Feedback</button>
-          </>
-        ) : (
-          <button onClick={onClose} className="col-span-2 py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase">Close Window</button>
+
+      <div className="space-y-4">
+        {visits.map((visit) => {
+          const client = clients.find(c => c.id === visit.clientId);
+          return (
+            <div 
+              key={visit.id} 
+              className="group p-5 bg-slate-50 dark:bg-slate-900/40 rounded-[2rem] border border-slate-100 dark:border-slate-800 hover:border-indigo-400 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+            >
+              <div className="flex gap-4 min-w-0">
+                <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                  <span className="text-xs font-black text-indigo-600">
+                    {new Date(visit.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-black text-slate-800 dark:text-white text-sm uppercase truncate leading-tight">{visit.clientName}</h4>
+                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-md border uppercase ${
+                      visit.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                    }`}>{visit.status}</span>
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+                    <i className="fas fa-building text-[8px] text-slate-400"></i> {visit.propertyName}
+                  </p>
+                  
+                  {client && (
+                    <div className="mt-2 flex gap-2">
+                       <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-700">
+                         ₹{(client.budgetMin/100000).toFixed(0)}L+
+                       </span>
+                       <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-700">
+                         {client.configuration[0] || 'Any BHK'}
+                       </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button 
+                onClick={() => onViewVisit(visit.id)}
+                className="w-full sm:w-auto px-6 py-2.5 btn-3d btn-3d-indigo text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg transition-all"
+              >
+                Redirect to Schedule <i className="fas fa-arrow-right ml-1 text-[8px]"></i>
+              </button>
+            </div>
+          );
+        })}
+        {visits.length === 0 && (
+          <div className="py-12 text-center bg-slate-50/50 dark:bg-slate-900/20 rounded-[2rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
+            <i className="fas fa-calendar-times text-slate-200 text-3xl mb-3"></i>
+            <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">No meetings recorded for this date</p>
+          </div>
         )}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
-const RescheduleModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfirm: (date: string, reason: string) => void }> = ({ visit, onClose, onConfirm }) => {
-  const [date, setDate] = useState(visit.scheduledAt.split(':')[0] + ':' + (visit.scheduledAt.split(':')[1] || '00'));
-  const [reason, setReason] = useState('');
+const ClientVisitGroup: React.FC<{ group: any, onAction: any, highlightedVisitId: string | null, onNextAction: any, properties: Property[] }> = ({ group, onAction, highlightedVisitId, onNextAction, properties }) => {
+  const navigate = useNavigate();
+  const client = group.client as Client | undefined;
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Auto-expand if a visit within this group is highlighted
+  useEffect(() => {
+    if (highlightedVisitId && group.visits.some((v: SiteVisit) => v.id === highlightedVisitId)) {
+      setIsOpen(true);
+    }
+  }, [highlightedVisitId, group.visits]);
 
   return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 gap-3">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-lg uppercase transition-transform active:scale-95">
+            {client?.firstName?.[0]}{client?.lastName?.[0]}
+          </div>
+          <div>
+            <h3 className="text-base font-black text-slate-800 dark:text-white uppercase tracking-tight">{client?.firstName} {client?.lastName}</h3>
+            <button 
+              onClick={() => setIsOpen(!isOpen)}
+              className="mt-1 flex items-center gap-2 group transition-all"
+            >
+              <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-colors ${isOpen ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 group-hover:text-indigo-600'}`}>
+                {group.visits.length} Visit{group.visits.length !== 1 ? 's' : ''}
+              </span>
+              <i className={`fas fa-chevron-down text-[8px] transition-transform duration-300 ${isOpen ? 'rotate-180 text-indigo-600' : 'text-slate-300'}`}></i>
+            </button>
+          </div>
+        </div>
+        <button onClick={() => navigate('/clients', { state: { highlightClientId: client?.id } })} className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors self-start sm:self-auto">
+          Client Profile <i className="fas fa-external-link-alt text-[8px]"></i>
+        </button>
+      </div>
+
+      <div className={`space-y-4 overflow-hidden transition-all duration-500 ease-in-out px-1 ${isOpen ? 'max-h-[5000px] opacity-100 py-4' : 'max-h-0 opacity-0'}`}>
+        {group.visits.map((visit: SiteVisit) => {
+          const isDealClosed = visit.feedback?.nextAction === 'Deal' && visit.feedback?.bookingFormUploaded;
+          const property = properties.find(p => p.id === visit.propertyId);
+          
+          return (
+            <div 
+              key={visit.id} 
+              id={`visit-card-${visit.id}`} 
+              className={`card-neo rounded-[2.5rem] p-6 border transition-all duration-500 relative group ${
+                highlightedVisitId === visit.id 
+                  ? 'ring-4 ring-indigo-500/30 scale-[1.01] border-indigo-400 shadow-[0_20px_60px_-15px_rgba(79,70,229,0.3)]' 
+                  : isDealClosed 
+                    ? 'border-emerald-500 bg-emerald-50/5 shadow-[0_10px_40px_-10px_rgba(16,185,129,0.1)]' 
+                    : 'border-slate-100 dark:border-slate-700 hover:border-indigo-100 dark:hover:border-indigo-900'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row justify-between gap-6">
+                <div className="flex gap-5">
+                  <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center shrink-0 border transition-colors ${
+                    visit.status === 'Completed' 
+                      ? 'bg-emerald-50 border-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400' 
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-indigo-600'
+                  }`}>
+                    <span className="text-[10px] font-black uppercase leading-none mb-1">{new Date(visit.scheduledAt).toLocaleString('default', { month: 'short' })}</span>
+                    <span className="text-2xl font-black leading-none">{new Date(visit.scheduledAt).getDate()}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center flex-wrap gap-2 mb-1.5">
+                      <h4 className="font-black text-slate-800 dark:text-white text-base uppercase leading-tight truncate">{visit.propertyName}</h4>
+                      <span className={`text-[8px] font-black px-2 py-0.5 rounded-lg border uppercase ${
+                        isDealClosed 
+                          ? 'bg-emerald-600 text-white border-emerald-600' 
+                          : visit.status === 'Completed' 
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400' 
+                            : 'bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400'
+                      }`}>
+                        {isDealClosed ? 'Deal Closed' : visit.status}
+                      </span>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-4 text-slate-400 dark:text-slate-500">
+                      <p className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors">
+                        <i className="fas fa-clock text-indigo-400"></i> {new Date(visit.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      {property?.location?.area && (
+                        <p className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 truncate transition-colors">
+                          <i className="fas fa-map-marker-alt text-red-400"></i> {property.location.area}
+                        </p>
+                      )}
+                    </div>
+                    
+                    {client && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                           <i className="fas fa-wallet text-[9px] text-indigo-400"></i>
+                           <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-tighter">
+                             ₹{(client.budgetMin/100000).toFixed(0)}L - ₹{(client.budgetMax/100000).toFixed(0)}L
+                           </span>
+                        </div>
+                        {client.configuration.length > 0 && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                             <i className="fas fa-home text-[9px] text-indigo-400"></i>
+                             <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-tighter">
+                               {client.configuration.join(' / ')}
+                             </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {visit.status !== 'Completed' ? (
+                    <>
+                      <button 
+                        onClick={() => onAction(visit, 'reschedule')} 
+                        className="flex-1 sm:flex-none py-3.5 px-6 btn-3d btn-3d-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all"
+                      >
+                        Reschedule
+                      </button>
+                      <button 
+                        onClick={() => onAction(visit, 'feedback')} 
+                        className="flex-1 sm:flex-none py-3.5 px-8 btn-3d btn-3d-indigo text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg transition-all"
+                      >
+                        Log Feedback
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      onClick={() => onNextAction(visit)} 
+                      className={`flex-1 sm:flex-none py-3.5 px-8 btn-3d rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 transition-all ${
+                        isDealClosed ? 'btn-3d-emerald text-white' : 'btn-3d-indigo text-white'
+                      }`}
+                    >
+                      {isDealClosed ? (
+                        <><i className="fas fa-trophy text-sm"></i> Deal Record 🎉</>
+                      ) : (
+                        <><i className="fas fa-arrow-right text-sm"></i> Next: {visit.feedback?.nextAction}</>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {visit.status === 'Completed' && visit.feedback && (
+                <div className="mt-6 pt-6 border-t border-slate-50 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/30 dark:bg-slate-900/10 rounded-2xl p-4">
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 transition-colors">Client Sentiment & Notes</p>
+                    <div className="p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 italic font-medium leading-relaxed transition-colors">"{visit.feedback.notes || 'No detailed notes provided.'}"</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                       <div>
+                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 transition-colors">Closing Probability</p>
+                         <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                            <p className={`text-xs font-black uppercase tracking-tighter ${
+                              visit.feedback.probability === ClientStatus.HOT ? 'text-red-500' : 
+                              visit.feedback.probability === ClientStatus.WARM ? 'text-amber-500' : 
+                              'text-blue-500'
+                            }`}>{visit.feedback.probability}</p>
+                         </div>
+                       </div>
+                       <div className="text-right">
+                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 transition-colors">Visit Rating</p>
+                         <div className="flex gap-0.5">
+                            {[...Array(5)].map((_, i) => (
+                              <i key={i} className={`fas fa-star text-[10px] ${i < (visit.feedback?.rating || 0) ? 'text-amber-400' : 'text-slate-200'}`}></i>
+                            ))}
+                         </div>
+                       </div>
+                    </div>
+                    
+                    {visit.feedback.attachments && visit.feedback.attachments.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-[8px] font-black text-slate-400 uppercase mb-2 tracking-widest">Site Photos</p>
+                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                          {visit.feedback.attachments.map((img: string, i: number) => (
+                            <div key={i} className="w-12 h-12 shrink-0 rounded-xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm">
+                              <img src={img} className="w-full h-full object-cover" alt="site upload" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const FeedbackModal: React.FC<{ visit: SiteVisit, onClose: () => void, onSubmit: (data: any) => void }> = ({ visit, onClose, onSubmit }) => {
+  const [rating, setRating] = useState(visit.feedback?.rating || 5);
+  const [outcome, setOutcome] = useState(visit.feedback?.outcome || '');
+  const [notes, setNotes] = useState(visit.feedback?.notes || '');
+  const [likes, setLikes] = useState(visit.feedback?.likes || '');
+  const [dislikes, setDislikes] = useState(visit.feedback?.dislikes || '');
+  const [prob, setProb] = useState<ClientStatus>(visit.feedback?.probability || ClientStatus.WARM);
+  const [nextAction, setNextAction] = useState(visit.feedback?.nextAction || 'Second Visit');
+  const [nextDate, setNextDate] = useState(visit.feedback?.nextFollowUp || '');
+  const [attachments, setAttachments] = useState<string[]>(visit.feedback?.attachments || []);
+  const [bookingFormUploaded, setBookingFormUploaded] = useState(visit.feedback?.bookingFormUploaded || false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const base64Files = await Promise.all(Array.from(files).map((file: File) => {
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+      });
+    }));
+    setAttachments(prev => [...prev, ...base64Files]);
+  };
+
+  const handleBookingUpload = () => {
+    setBookingFormUploaded(true);
+  };
+
+  const handleSubmit = () => {
+    onSubmit({ rating, outcome, notes, likes, dislikes, probability: prob, nextAction, nextFollowUp: nextDate, attachments, bookingFormUploaded });
+  };
+
+  const isClosedDeal = nextAction === 'Deal' && bookingFormUploaded;
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-[3rem] shadow-2xl flex flex-col max-h-[90vh] animate-slide-up transition-colors duration-300">
+        <div className={`p-8 border-b dark:border-slate-700 flex justify-between items-center transition-colors duration-500 ${isClosedDeal ? 'bg-emerald-600 text-white' : 'bg-slate-50 dark:bg-slate-900/50'}`}>
+          <div>
+            <h3 className={`text-2xl font-black uppercase tracking-tight ${isClosedDeal ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
+              {isClosedDeal ? '🎉 Congratulations! Deal Closed' : 'Visit Feedback'}
+            </h3>
+            <p className={`text-[10px] font-black uppercase mt-1 ${isClosedDeal ? 'text-emerald-100' : 'text-slate-400'}`}>Lead: {visit.clientName} • {visit.propertyName}</p>
+          </div>
+          <button onClick={onClose} className={`w-12 h-12 rounded-2xl border flex items-center justify-center transition-colors ${isClosedDeal ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400'}`}>
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar scroll-smooth">
+          {isClosedDeal && (
+            <div className="p-8 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-[2.5rem] text-center space-y-4 animate-slide-up">
+               <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto shadow-inner text-emerald-600">
+                 <i className="fas fa-trophy text-4xl"></i>
+               </div>
+               <div>
+                 <h4 className="text-xl font-black text-emerald-700 dark:text-emerald-400 uppercase">Closing Confirmed</h4>
+                 <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">The booking form has been successfully recorded for this lead.</p>
+               </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <label className="text-[10px] font-black text-slate-400 uppercase block tracking-widest ml-1">Overall Impression (1-5)</label>
+            <div className="flex gap-3">
+              {[1, 2, 3, 4, 5].map(s => (
+                <button key={s} onClick={() => setRating(s)} className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl transition-all active:scale-90 ${s <= rating ? 'bg-amber-400 text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-700 text-slate-300'}`}>
+                  <i className="fas fa-star"></i>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Outcome & Feedback</label><textarea value={outcome} onChange={e => setOutcome(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors" placeholder="General visit outcome..."></textarea></div>
+            <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Outcome Notes</label><textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors" placeholder="Additional details..."></textarea></div>
+            <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">What they liked</label><textarea value={likes} onChange={e => setLikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors" placeholder="Features liked..."></textarea></div>
+            <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">What they disliked / Concerns</label><textarea value={dislikes} onChange={e => setDislikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors" placeholder="Pain points..."></textarea></div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-6">
+            <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Probability</label><select value={prob} onChange={e => setProb(e.target.value as any)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-black dark:text-white outline-none transition-colors"><option value={ClientStatus.HOT}>Hot</option><option value={ClientStatus.WARM}>Warm</option><option value={ClientStatus.COLD}>Cold</option></select></div>
+            <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Next Action</label><select value={nextAction} onChange={e => setNextAction(e.target.value as any)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-black dark:text-white outline-none transition-colors"><option>Second Visit</option><option>Negotiation Meeting</option><option>Drop</option><option>Deal</option><option>Send Details</option><option>Send Quotation</option></select></div>
+            <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Next Follow-up</label><input type="datetime-local" value={nextDate} onChange={e => setNextDate(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-bold dark:text-white outline-none transition-colors" /></div>
+          </div>
+
+          {nextAction === 'Deal' && (
+            <div className={`p-6 border rounded-[2rem] flex items-center justify-between transition-all duration-500 ${bookingFormUploaded ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' : 'bg-amber-50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-800'}`}>
+              <div>
+                <p className={`text-[10px] font-black uppercase tracking-widest ${bookingFormUploaded ? 'text-emerald-600' : 'text-amber-600'}`}>Booking Form Process</p>
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{bookingFormUploaded ? 'Form Uploaded ✅' : 'Required for Deal Closure'}</p>
+              </div>
+              <button 
+                onClick={handleBookingUpload} 
+                className={`px-6 py-2 rounded-xl text-[9px] font-black uppercase transition-all active:scale-95 ${bookingFormUploaded ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'bg-amber-600 text-white shadow-lg shadow-amber-900/20'}`}
+              >
+                {bookingFormUploaded ? 'Upload Success' : 'Upload Form'}
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Visit Photos / Attachments</label>
+              <button onClick={() => fileInputRef.current?.click()} className="text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase tracking-widest hover:underline">+ Add Photos</button>
+              <input type="file" ref={fileInputRef} multiple className="hidden" onChange={handleFileUpload} />
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+              {attachments.map((img, i) => (
+                <div key={i} className="w-24 h-24 shrink-0 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden relative group">
+                  <img src={img} className="w-full h-full object-cover" alt="" />
+                  <button onClick={() => setAttachments(attachments.filter((_, idx) => idx !== i))} className="absolute inset-0 bg-red-600/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <i className="fas fa-trash text-white text-xs"></i>
+                  </button>
+                </div>
+              ))}
+              {attachments.length === 0 && (
+                <div className="w-full py-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-[2rem]">
+                  <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">No photos attached</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex gap-4 shrink-0 transition-colors">
+          <button onClick={onClose} className="flex-1 py-5 btn-3d btn-3d-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all">Discard</button>
+          <button 
+            onClick={handleSubmit} 
+            className={`flex-[2] py-5 btn-3d rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-lg transition-all ${isClosedDeal ? 'btn-3d-emerald text-white' : 'btn-3d-indigo text-white'}`}
+          >
+            {isClosedDeal ? 'Save Final Deal' : 'Submit Feedback'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const RescheduleModal: React.FC<{ visit: SiteVisit, title?: string, onClose: () => void, onConfirm: (date: string, reason: string) => void }> = ({ visit, title = "Reschedule Visit", onClose, onConfirm }) => {
+  const [date, setDate] = useState(visit.scheduledAt.split(':')[0] + ':' + (visit.scheduledAt.split(':')[1] || '00'));
+  const [reason, setReason] = useState('');
+  return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-6">
-      <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6">
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Reschedule Visit</h3>
+      <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-slide-up transition-colors">
+        <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">
+          {title}
+        </h3>
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">New Date & Time</label>
-            <input type="datetime-local" value={date} onChange={e => setDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none shadow-sm" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Reason</label>
-            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm" placeholder="Reason..."></textarea>
-          </div>
+          <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase block ml-1">New Date & Time</label><input type="datetime-local" value={date} onChange={e => setDate(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl font-bold text-xs dark:text-white outline-none" /></div>
+          <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase block ml-1">Notes / Reason</label><textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl text-xs font-bold dark:text-white outline-none" placeholder="Reason for change..."></textarea></div>
         </div>
         <div className="flex gap-4">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase">Back</button>
@@ -524,107 +696,81 @@ const RescheduleModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfi
   );
 };
 
-const CancelModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfirm: (reason: string) => void }> = ({ visit, onClose, onConfirm }) => {
-  const [reason, setReason] = useState('');
+const ShareDetailsModal: React.FC<{ visit: SiteVisit, client?: Client, property?: Property, onClose: () => void }> = ({ visit, client, property, onClose }) => {
+  if (!client || !property) return null;
+  
+  const [selectedConfigs, setSelectedConfigs] = useState<string[]>(property.configurations?.map(c => c.bhk) || []);
+
+  const toggleConfig = (bhk: string) => {
+    setSelectedConfigs(prev => 
+      prev.includes(bhk) ? prev.filter(c => c !== bhk) : [...prev, bhk]
+    );
+  };
+
+  const templates = [
+    { 
+      name: 'Brochure & Configuration', 
+      msg: `Hi ${client.firstName}! It was great meeting you today at *${property.title}*. 
+
+🏢 Project: ${property.title}
+🏠 Selected Configs: ${selectedConfigs.join(', ') || 'Various Options'}
+💰 Pricing: ₹${((property.financials?.priceMin || 0)/100000).toFixed(1)}L - ₹${((property.financials?.priceMax || 0)/100000).toFixed(1)}L
+📍 Location: ${property.location?.mapLink || 'N/A'}
+
+Looking forward to our next ${visit.feedback?.nextAction || 'discussion'}.` 
+    },
+    { 
+      name: 'Post-Visit Thank You', 
+      msg: `Hi ${client.firstName}, thank you for your time today at *${property.title}*. 
+
+Glad you liked the ${visit.feedback?.likes || 'amenities and project layout'}. I've noted your interest in the ${selectedConfigs.join('/')} units. 
+
+I'll keep you posted on the ${visit.feedback?.nextAction || 'next steps'}.` 
+    }
+  ];
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-6">
-      <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6">
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Cancel Visit</h3>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Reason</label>
-          <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm" placeholder="Reason..."></textarea>
-        </div>
-        <div className="flex gap-4">
-          <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase">Keep Visit</button>
-          <button onClick={() => onConfirm(reason)} className="flex-1 py-4 btn-3d btn-3d-red text-white rounded-2xl font-black text-[10px] uppercase">Cancel Now</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const FeedbackModal: React.FC<{ visit: SiteVisit, onClose: () => void, onSubmit: (data: any) => void }> = ({ visit, onClose, onSubmit }) => {
-  const [rating, setRating] = useState(5);
-  const [notes, setNotes] = useState('');
-  const [likes, setLikes] = useState('');
-  const [dislikes, setDislikes] = useState('');
-  const [prob, setProb] = useState(ClientStatus.WARM);
-  const [nextAction, setNextAction] = useState('Second Visit');
-  const [nextDate, setNextDate] = useState('');
-
-  const handleSubmit = () => {
-    onSubmit({
-      rating, notes, likes, dislikes, probability: prob, nextAction, nextFollowUp: nextDate, attachments: [], outcome: 'Visit completed successfully'
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-slide-up">
-        <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-2xl p-8 animate-slide-up space-y-6 transition-colors flex flex-col max-h-[85vh]">
+        <div className="flex justify-between items-start">
           <div>
-            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Visit Feedback</h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{visit.clientName} • {visit.propertyName}</p>
+            <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">Share Materials</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Directly to {client.firstName}</p>
           </div>
-          <button onClick={onClose} className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-slate-400">
+          <button onClick={onClose} className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
             <i className="fas fa-times"></i>
           </button>
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 hide-scrollbar">
-          <div className="space-y-4">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Overall Impression (1-5)</label>
-            <div className="flex gap-4">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button key={star} onClick={() => setRating(star)} className={`w-14 h-14 rounded-2xl btn-3d transition-all flex items-center justify-center text-xl ${star <= rating ? 'btn-3d-amber text-white' : 'btn-3d-white text-slate-300'}`}>
-                  <i className="fas fa-star"></i>
-                </button>
-              ))}
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">What did client like?</label>
-              <textarea value={likes} onChange={e => setLikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm"></textarea>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Concerns / Dislikes</label>
-              <textarea value={dislikes} onChange={e => setDislikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm"></textarea>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Closing Probability</label>
-              <select value={prob} onChange={e => setProb(e.target.value as ClientStatus)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black outline-none shadow-sm">
-                <option value={ClientStatus.HOT}>Hot</option>
-                <option value={ClientStatus.WARM}>Warm</option>
-                <option value={ClientStatus.COLD}>Cold</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Next Action</label>
-              <select value={nextAction} onChange={e => setNextAction(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black outline-none shadow-sm">
-                <option>Second Visit</option>
-                <option>Send Details</option>
-                <option>Send Quotation</option>
-                <option>Negotiation Meeting</option>
-                <option>Drop</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Next Follow-up</label>
-              <input type="datetime-local" value={nextDate} onChange={e => setNextDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none shadow-sm" />
-            </div>
+        <div className="space-y-4">
+          <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">Selection for Template</label>
+          <div className="flex flex-wrap gap-2">
+            {(property.configurations || []).map(c => (
+              <button 
+                key={c.bhk}
+                onClick={() => toggleConfig(c.bhk)}
+                className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border ${
+                  selectedConfigs.includes(c.bhk) ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white dark:bg-slate-700 border-slate-100 dark:border-slate-600 text-slate-400'
+                }`}
+              >
+                {c.bhk}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="p-8 border-t bg-slate-50 flex gap-4">
-          <button onClick={onClose} className="flex-1 py-5 btn-3d btn-3d-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest">Discard</button>
-          <button onClick={handleSubmit} className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-indigo-100">Submit Feedback</button>
+        <div className="space-y-3 overflow-y-auto flex-1 no-scrollbar">
+          {templates.map((t, idx) => (
+            <button key={idx} onClick={() => { window.open(`https://wa.me/${client.mobile.replace(/\D/g, '')}?text=${encodeURIComponent(t.msg)}`, '_blank'); onClose(); }} className="w-full text-left p-5 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl hover:border-emerald-500 transition-all group relative overflow-hidden">
+               <div className="absolute top-0 right-0 p-2 opacity-5">
+                 <i className="fab fa-whatsapp text-4xl text-emerald-500"></i>
+               </div>
+               <p className="text-[10px] font-black text-emerald-600 uppercase mb-2 group-hover:text-emerald-500">{t.name}</p>
+               <p className="text-[11px] text-slate-600 dark:text-slate-400 italic line-clamp-4 transition-colors leading-relaxed">"{t.msg}"</p>
+            </button>
+          ))}
         </div>
+        <button onClick={onClose} className="w-full py-4 btn-3d btn-3d-white rounded-2xl text-[10px] font-black uppercase">Cancel</button>
       </div>
     </div>
   );

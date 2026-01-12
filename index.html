@@ -162,6 +162,25 @@
       .material-symbols-outlined.filled {
         font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
       }
+
+      /* Print Support for PDF Export */
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        #comparison-matrix-print, #comparison-matrix-print * {
+          visibility: visible;
+        }
+        #comparison-matrix-print {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+        }
+        .no-print {
+          display: none !important;
+        }
+      }
     </style>
 <script type="importmap">
 {

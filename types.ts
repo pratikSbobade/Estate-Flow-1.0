@@ -76,9 +76,10 @@ export interface SiteVisit {
     likes: string;
     dislikes: string;
     probability: ClientStatus;
-    nextAction: string;
+    nextAction: 'Second Visit' | 'Negotiation Meeting' | 'Drop' | 'Deal' | 'Send Details' | 'Send Quotation';
     nextFollowUp: string;
-    attachments: string[];
+    attachments: string[]; // Base64 or URLs
+    bookingFormUploaded?: boolean;
   };
 }
 

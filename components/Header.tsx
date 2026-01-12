@@ -16,7 +16,8 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
   const location = useLocation();
 
   const isMainPage = ['/clients', '/visits', '/properties'].includes(location.pathname);
-  const isExpandedAddPage = ['/clients', '/properties'].includes(location.pathname);
+  // Visually consistent 'Add' button for all primary CRM entities
+  const isExpandedAddPage = ['/clients', '/properties', '/visits'].includes(location.pathname);
 
   const getPageTitle = () => {
     switch (location.pathname) {

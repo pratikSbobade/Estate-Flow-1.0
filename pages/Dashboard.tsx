@@ -43,44 +43,53 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
   ];
 
   return (
-    <div className="space-y-10">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-6 sm:space-y-10">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Agent Dashboard</h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Monitoring Nagpur region performance.</p>
+          <h1 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight uppercase">Agent Dashboard</h1>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">Monitoring Nagpur region performance.</p>
         </div>
-        <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-3 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 transition-colors">
-           <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-             <i className="fas fa-trophy text-xl"></i>
+        <div className="flex items-center gap-3 sm:gap-4 bg-white dark:bg-slate-800 p-2 sm:p-3 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 transition-colors self-start md:self-auto">
+           <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+             <i className="fas fa-trophy text-lg sm:text-xl"></i>
            </div>
            <div>
-             <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Team Rank</p>
-             <p className="font-black text-slate-800 dark:text-white">#3 / 12 Agents</p>
+             <p className="text-[8px] sm:text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest leading-none mb-1">Team Rank</p>
+             <p className="text-xs sm:text-base font-black text-slate-800 dark:text-white leading-none">#3 / 12 Agents</p>
            </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Stats Grid - 2 Column on Mobile */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {stats.map((stat, idx) => (
-          <div key={idx} className="card-neo p-6 rounded-[2rem] border-b-8 border-indigo-500/10 hover:border-indigo-500 transition-all cursor-default group">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg transform group-hover:scale-110 transition-transform ${
+          <div key={idx} className="card-neo p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2rem] border-b-4 sm:border-b-8 border-indigo-500/10 hover:border-indigo-500 transition-all cursor-default group">
+            <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-white mb-3 sm:mb-6 shadow-lg transform group-hover:scale-110 transition-transform ${
               stat.color === 'indigo' ? 'bg-indigo-600 shadow-indigo-200' :
               stat.color === 'emerald' ? 'bg-emerald-500 shadow-emerald-200' :
               stat.color === 'amber' ? 'bg-amber-500 shadow-amber-200' : 'bg-purple-600 shadow-purple-200'
             }`}>
-              <i className={`fas ${stat.icon} text-xl`}></i>
+              <i className={`fas ${stat.icon} text-sm sm:text-xl`}></i>
             </div>
-            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{stat.label}</p>
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{stat.value}</h3>
-            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mt-2">{stat.sub}</p>
+            <p className="text-[7px] sm:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest line-clamp-1">{stat.label}</p>
+            <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5 sm:mt-1 truncate">{stat.value}</h3>
+            <p className="text-[8px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 mt-1 sm:mt-2 line-clamp-1">{stat.sub}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card-neo p-8 rounded-[2.5rem]">
-          <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight mb-6">Call Log Maintenance</h2>
-          <div className="overflow-x-auto">
+      {/* Bottom Section - Stacked on Mobile */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
+        {/* Call Log Maintenance */}
+        <div className="lg:col-span-2 card-neo p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] overflow-hidden">
+          <div className="flex justify-between items-center mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-black text-slate-800 dark:text-white tracking-tight uppercase">Call Maintenance</h2>
+            <button className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:underline">View All</button>
+          </div>
+
+          {/* Table View for Desktop/Tablet */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700">
@@ -118,26 +127,71 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
               </tbody>
             </table>
           </div>
+
+          {/* List View for Mobile */}
+          <div className="sm:hidden space-y-3">
+            {callInteractions.slice(0, 5).map((log) => {
+              const client = clients.find(c => c.id === log.clientId);
+              return (
+                <div key={log.id} className="p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700 rounded-2xl space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-800 dark:text-white uppercase leading-none mb-1">{client ? `${client.firstName} ${client.lastName}` : 'Guest'}</p>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">{log.clientId}</p>
+                    </div>
+                    <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm border border-slate-100 dark:border-slate-700">
+                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800">
+                      {log.description.split(': ')[1]?.split(' - ')[0] || 'Called'}
+                    </span>
+                    <p className="text-[9px] font-medium text-slate-500 dark:text-slate-400 italic truncate flex-1">
+                      {log.description.split(' - ')[1] || 'No notes added.'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {callInteractions.length === 0 && (
+            <div className="py-12 text-center">
+              <i className="fas fa-phone-slash text-slate-200 dark:text-slate-700 text-3xl mb-3"></i>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No recent calls logged</p>
+            </div>
+          )}
         </div>
 
-        <div className="card-neo p-8 rounded-[2.5rem]">
-          <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight mb-4">Disposition Breakdown</h2>
-          <div className="h-64">
+        {/* Breakdown Card */}
+        <div className="card-neo p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem]">
+          <h2 className="text-lg sm:text-xl font-black text-slate-800 dark:text-white tracking-tight uppercase mb-4">Disposition</h2>
+          <div className="h-48 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={65} paddingAngle={5} dataKey="value">
                   {pieData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '10px', color: '#fff' }}
                   itemStyle={{ color: '#fff' }}
                 />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase' }} />
+                <Legend 
+                  iconType="circle" 
+                  layout="horizontal" 
+                  verticalAlign="bottom" 
+                  align="center"
+                  wrapperStyle={{ fontSize: '8px', fontWeight: 800, textTransform: 'uppercase', paddingTop: '10px' }} 
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
+      
+      {/* Visual Padding for Mobile Nav */}
+      <div className="h-4 sm:hidden"></div>
     </div>
   );
 };

@@ -13,15 +13,17 @@ interface ClientsPageProps {
   onAddClient: () => void;
   onUpdateClient: (client: Client) => void;
   onAddVisit: (newVisit: SiteVisit) => void;
+  availableLocations?: string[];
 }
 
 type SortField = 'name' | 'score' | 'created' | 'budget';
 
-const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, searchQuery, onAddClient, onUpdateClient, onAddVisit }) => {
+const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, searchQuery, onAddClient, onUpdateClient, onAddVisit, availableLocations = [] }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'status'>('grid');
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [bookingClient, setBookingClient] = useState<Client | null>(null);
   const [callOutcomeClient, setCallOutcomeClient] = useState<Client | null>(null);
+  const [matchingClient, setMatchingClient] = useState<Client | null>(null);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>('created');
@@ -32,7 +34,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
   const [locationFilters, setLocationFilters] = useState<string[]>([]);
 
   // Derived Data: Unique Locations from current clients
-  const availableLocations = useMemo(() => {
+  const clientLocations = useMemo(() => {
     const locs = new Set<string>();
     clients.forEach(c => c.locations.forEach(l => locs.add(l)));
     return Array.from(locs).sort();
@@ -57,7 +59,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
       } else if (sortField === 'score') {
         comparison = a.nurturingScore - b.nurturingScore;
       } else if (sortField === 'created') {
-        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        comparison = new Date(a.createdAt).getTime() - new Date(a.createdAt).getTime();
       } else if (sortField === 'budget') {
         comparison = a.budgetMax - b.budgetMax;
       }
@@ -175,6 +177,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
               visits={visits.filter(v => v.clientId === client.id)}
               onEdit={() => setEditingClient(client)}
               onVisit={() => setBookingClient(client)}
+              onMatch={() => setMatchingClient(client)}
               onCallTrigger={() => setCallOutcomeClient(client)}
               onUpdateClient={onUpdateClient}
             />
@@ -223,6 +226,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
                       visits={visits.filter(v => v.clientId === client.id)}
                       onEdit={() => setEditingClient(client)}
                       onVisit={() => setBookingClient(client)}
+                      onMatch={() => setMatchingClient(client)}
                       onCallTrigger={() => setCallOutcomeClient(client)}
                       onUpdateClient={onUpdateClient}
                     />
@@ -271,7 +275,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
               <div className="space-y-4">
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Preferred Locations</label>
                 <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar pr-2">
-                  {availableLocations.map(loc => (
+                  {(clientLocations.length > 0 ? clientLocations : availableLocations).map(loc => (
                     <button 
                       key={loc}
                       onClick={() => setLocationFilters(prev => prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc])}
@@ -280,9 +284,6 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
                       {loc}
                     </button>
                   ))}
-                  {availableLocations.length === 0 && (
-                    <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 italic">No locations found in current leads</p>
-                  )}
                 </div>
               </div>
             </div>
@@ -304,9 +305,32 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
         </div>
       )}
 
-      {editingClient && <AddClientModal initialData={editingClient} onClose={() => setEditingClient(null)} onSubmit={(updated) => { onUpdateClient(updated); setEditingClient(null); }} />}
+      {editingClient && (
+        <AddClientModal 
+          initialData={editingClient} 
+          onClose={() => setEditingClient(null)} 
+          onSubmit={(updated) => { onUpdateClient(updated); setEditingClient(null); }} 
+          availableLocations={availableLocations}
+        />
+      )}
       
-      {bookingClient && <BookVisitModal client={bookingClient} clients={clients} properties={properties} onClose={() => setBookingClient(null)} onSubmit={onAddVisit} />}
+      {bookingClient && (
+        <BookVisitModal 
+          client={bookingClient} 
+          clients={clients} 
+          properties={properties} 
+          onClose={() => setBookingClient(null)} 
+          onSubmit={(v) => { onAddVisit(v); setBookingClient(null); }} 
+        />
+      )}
+
+      {matchingClient && (
+        <PropertyRecommendationsSidebar 
+          client={matchingClient} 
+          allProperties={properties} 
+          onClose={() => setMatchingClient(null)} 
+        />
+      )}
 
       {callOutcomeClient && (
         <CallOutcomeModal 
@@ -325,15 +349,16 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, visits, properties, 
     </div>
   );
 };
-
+/* ...rest of file (ClientCard, etc) remains the same ... */
 const ClientCard: React.FC<{ 
   client: Client, 
   visits: SiteVisit[], 
   onEdit: () => void, 
   onVisit: () => void, 
+  onMatch: () => void,
   onCallTrigger: () => void,
   onUpdateClient: (c: Client) => void 
-}> = ({ client, visits, onEdit, onVisit, onCallTrigger, onUpdateClient }) => {
+}> = ({ client, visits, onEdit, onVisit, onMatch, onCallTrigger, onUpdateClient }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'profile' | 'templates' | 'history'>('profile');
   const [historyFilter, setHistoryFilter] = useState<'All' | 'Call' | 'WhatsApp' | 'Visit'>('All');
@@ -344,6 +369,7 @@ const ClientCard: React.FC<{
     if (action === 'call') onCallTrigger();
     if (action === 'wa') window.open(`https://wa.me/${client.mobile.replace(/\D/g, '')}`, '_blank');
     if (action === 'visit') onVisit();
+    if (action === 'match') onMatch();
   };
 
   const unifiedLogs = [
@@ -379,26 +405,25 @@ const ClientCard: React.FC<{
           <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-lg shrink-0">
             {client.firstName[0]}{client.lastName[0]}
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h3 className="font-black text-slate-800 dark:text-white text-base uppercase truncate leading-tight transition-colors">{client.firstName} {client.lastName}</h3>
             <div className="flex items-center gap-2 mt-1">
               <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-lg border uppercase ${client.priority === ClientStatus.HOT ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' : 'bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600'}`}>{client.priority}</span>
               <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{client.id}</span>
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0">
              <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">{client.nurturingScore}%</span>
              <p className="text-[6px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Score</p>
           </div>
         </div>
       </div>
 
-      <div className="px-6 mb-4">
-        <div className="flex gap-2">
-          <button onClick={(e) => handleAction(e, 'call')} className="flex-1 py-2 btn-3d btn-3d-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-colors">Call</button>
-          <button onClick={(e) => handleAction(e, 'wa')} className="flex-1 py-2 btn-3d btn-3d-emerald text-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-colors">WA</button>
-          <button onClick={(e) => handleAction(e, 'visit')} className="flex-1 py-2 btn-3d btn-3d-indigo text-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-colors">Visit</button>
-        </div>
+      <div className="px-6 mb-4 grid grid-cols-4 gap-2">
+        <button onClick={(e) => handleAction(e, 'call')} className="py-2 btn-3d btn-3d-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-colors">Call</button>
+        <button onClick={(e) => handleAction(e, 'wa')} className="py-2 btn-3d btn-3d-emerald text-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-colors">WA</button>
+        <button onClick={(e) => handleAction(e, 'visit')} className="py-2 btn-3d btn-3d-indigo text-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-colors">Visit</button>
+        <button onClick={(e) => handleAction(e, 'match')} className="py-2 btn-3d bg-slate-900 text-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-colors shadow-none" title="Match Properties">Match</button>
       </div>
 
       {/* BOTTOM DROPDOWN */}
@@ -467,7 +492,7 @@ const ClientCard: React.FC<{
                             <i className={`fas ${log.type === 'Call' ? 'fa-phone' : log.type === 'Visit' ? 'fa-calendar-check' : 'fa-sticky-note'}`}></i>
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[10px] font-black text-slate-800 dark:text-white truncate uppercase transition-colors">{log.description}</p>
+                            <p className="text-[10px] font-black text-slate-800 dark:text-white uppercase truncate transition-colors">{log.description}</p>
                             <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })} at {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
                         </div>
@@ -486,6 +511,149 @@ const ClientCard: React.FC<{
           </div>
         )}
       </div>
+    </div>
+  );
+};
+/* ProfileItem, TemplateItem, CallOutcomeModal, PropertyRecommendationsSidebar remain exactly as before */
+const PropertyRecommendationsSidebar: React.FC<{ client: Client, allProperties: Property[], onClose: () => void }> = ({ client, allProperties, onClose }) => {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const matchedProperties = useMemo(() => {
+    return allProperties.filter(p => {
+      // Logic: Within Budget, in Area, or matching BHK
+      const matchesBudget = (p.financials?.priceMin || 0) <= client.budgetMax;
+      const matchesLocation = client.locations.some(loc => (p.location?.area || '').toLowerCase().includes(loc.toLowerCase()));
+      const matchesConfig = client.configuration.some(cfg => (p.configurations || []).some(pc => pc.bhk.includes(cfg)));
+      
+      // We show properties that match at least 2 criteria for "High Match" or just budget for "Low Match"
+      return matchesBudget && (matchesLocation || matchesConfig);
+    }).sort((a, b) => {
+      // Sort by "Match Quality"
+      const scoreA = (client.locations.some(loc => (a.location?.area || '').includes(loc)) ? 1 : 0) + (client.configuration.some(cfg => (a.configurations || []).some(pc => pc.bhk.includes(cfg))) ? 1 : 0);
+      const scoreB = (client.locations.some(loc => (b.location?.area || '').includes(loc)) ? 1 : 0) + (client.configuration.some(cfg => (b.configurations || []).some(pc => pc.bhk.includes(cfg))) ? 1 : 0);
+      return scoreB - scoreA;
+    });
+  }, [client, allProperties]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleShare = () => {
+    const selected = matchedProperties.filter(p => selectedIds.includes(p.id));
+    if (selected.length === 0) return;
+
+    let message = `Hi ${client.firstName}! 👋\n\nBased on your interest in ${client.locations.join('/')} for a ${client.configuration.join('/')} home, I've curated these projects for you:\n\n`;
+    
+    selected.forEach((p, idx) => {
+      message += `${idx + 1}. *${p.title}* at ${p.location?.area || 'Unknown Area'}\n`;
+      message += `💰 Pricing: ₹${((p.financials?.priceMin || 0)/100000).toFixed(1)}L - ₹${((p.financials?.priceMax || 0)/100000).toFixed(1)}L\n`;
+      message += `📐 Details: ${(p.configurations || []).map(c => c.bhk).join('/')} Units\n`;
+      message += `📍 Map: ${p.location?.mapLink || 'Available on request'}\n\n`;
+    });
+
+    message += `Would you like to schedule a site visit for any of these this weekend? 🗓️`;
+    window.open(`https://wa.me/${client.mobile.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex justify-end">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
+      
+      {/* Sidebar Content */}
+      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col animate-slide-right transition-colors">
+        <div className="p-8 border-b dark:border-slate-800 flex justify-between items-center transition-colors">
+          <div>
+            <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Property Matches</h2>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">For {client.firstName} {client.lastName}</p>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 transition-colors">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div className="p-6 bg-slate-50 dark:bg-slate-800/30 flex gap-4 transition-colors">
+           <div className="flex-1">
+              <p className="text-[7px] font-black text-slate-400 uppercase mb-1">Budget Goal</p>
+              <p className="text-xs font-black text-indigo-600">₹{(client.budgetMin/100000).toFixed(0)}L - ₹{(client.budgetMax/100000).toFixed(0)}L</p>
+           </div>
+           <div className="flex-1">
+              <p className="text-[7px] font-black text-slate-400 uppercase mb-1">Locality</p>
+              <p className="text-xs font-black text-slate-700 dark:text-slate-300 truncate">{client.locations.join(', ')}</p>
+           </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 hide-scrollbar">
+          {matchedProperties.map(p => {
+            const isMatchedLoc = client.locations.some(loc => (p.location?.area || '').includes(loc));
+            const isMatchedCfg = client.configuration.some(cfg => (p.configurations || []).some(pc => pc.bhk.includes(cfg)));
+            const isSelected = selectedIds.includes(p.id);
+
+            return (
+              <div 
+                key={p.id}
+                onClick={() => toggleSelect(p.id)}
+                className={`p-4 rounded-[2rem] border transition-all cursor-pointer relative group ${
+                  isSelected 
+                    ? 'bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-100 dark:shadow-indigo-900/20' 
+                    : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-indigo-300'
+                }`}
+              >
+                <div className="flex gap-4">
+                  <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl overflow-hidden shrink-0 transition-colors">
+                     <img src={p.media?.photos?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=200'} className="w-full h-full object-cover" alt="" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className={`text-sm font-black uppercase truncate transition-colors ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'}`}>{p.title}</h4>
+                    <p className={`text-[10px] font-bold transition-colors ${isSelected ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>{p.location?.area || 'Unknown Area'}</p>
+                    
+                    <div className="flex gap-2 mt-2">
+                       {isMatchedLoc && <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${isSelected ? 'bg-white/20 text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}>Loc Match</span>}
+                       {isMatchedCfg && <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${isSelected ? 'bg-white/20 text-white' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'}`}>BHK Match</span>}
+                    </div>
+
+                    <p className={`text-xs font-black mt-2 transition-colors ${isSelected ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`}>₹{((p.financials?.priceMin || 0)/100000).toFixed(1)}L+</p>
+                  </div>
+                  <div className="shrink-0 flex items-center pr-2">
+                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-white border-white text-indigo-600' : 'border-slate-200 dark:border-slate-600'}`}>
+                        {isSelected && <i className="fas fa-check text-[10px]"></i>}
+                     </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {matchedProperties.length === 0 && (
+            <div className="py-20 text-center">
+               <i className="fas fa-robot text-slate-200 text-4xl mb-4"></i>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">The algorithm couldn't find an exact match.<br/>Try broadening the lead's criteria.</p>
+            </div>
+          )}
+        </div>
+
+        {selectedIds.length > 0 && (
+          <div className="p-8 border-t dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors animate-slide-up">
+            <button 
+              onClick={handleShare}
+              className="w-full py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl"
+            >
+              <i className="fab fa-whatsapp text-lg"></i>
+              Share {selectedIds.length} Selected Units
+            </button>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes slideRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .animate-slide-right {
+          animation: slideRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+      `}</style>
     </div>
   );
 };
