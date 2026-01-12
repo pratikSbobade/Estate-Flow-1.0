@@ -34,7 +34,6 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
   const handleUpdateVisit = (visitId: string, updates: Partial<SiteVisit>) => {
     const visit = visits.find(v => v.id === visitId);
     if (visit) {
-      // Destructure 'reason' out so it is not sent to Supabase as a column
       const { reason, ...cleanUpdates } = updates as any;
       
       const historyUpdate = {
@@ -57,7 +56,6 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
     setDayAgenda(null);
     setHighlightedVisitId(visitId);
     
-    // Smooth scroll to the element after view switch
     setTimeout(() => {
       const element = document.getElementById(`visit-card-${visitId}`);
       if (element) {
@@ -65,11 +63,9 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
       }
     }, 100);
 
-    // Remove highlight after a few seconds
     setTimeout(() => setHighlightedVisitId(null), 3000);
   };
 
-  // Calendar Logic
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
@@ -152,11 +148,6 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
                         ))}
                         {dayVisits.length > 2 && <span className="text-[7px] font-black text-slate-300">+{dayVisits.length - 2} more</span>}
                       </div>
-                      {dayVisits.length === 0 && (
-                         <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                            <i className="fas fa-plus-circle text-indigo-300 text-xs"></i>
-                         </div>
-                      )}
                     </>
                   )}
                 </div>
@@ -175,16 +166,9 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
               onNextAction={() => alert(`Initiating Next Action: ${visit.feedback?.nextAction}`)} 
             />
           ))}
-          {filteredVisits.length === 0 && (
-            <div className="py-20 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
-              <i className="fas fa-calendar-times text-4xl text-slate-200 mb-4"></i>
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No site visits found</p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Day Agenda Modal */}
       {dayAgenda && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[210] flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 animate-slide-up flex flex-col max-h-[80vh]">
@@ -216,36 +200,13 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
                   </div>
                   <h4 className="font-black text-slate-800 text-sm uppercase leading-tight">{v.clientName}</h4>
                   <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-1">{v.propertyName}</p>
-                  
-                  <div className="mt-3 flex gap-2">
-                    <span className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[8px] font-black uppercase tracking-widest group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      View in List
-                    </span>
-                  </div>
                 </div>
               ))}
-              {dayAgenda.visits.length === 0 && (
-                <div className="text-center py-10">
-                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">No visits scheduled</p>
-                </div>
-              )}
-            </div>
-            <div className="mt-6">
-                <button 
-                  onClick={() => {
-                    setDayAgenda(null);
-                    onAddVisit();
-                  }}
-                  className="w-full py-4 btn-3d btn-3d-indigo text-white text-[10px] font-black uppercase tracking-widest rounded-2xl"
-                >
-                  Schedule New Visit
-                </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Action Modals */}
       {activeModal?.type === 'details' && (
         <VisitDetailsPopup visit={activeModal.visit} onClose={() => setActiveModal(null)} onAction={(type) => setActiveModal({visit: activeModal.visit, type})} />
       )}
@@ -331,7 +292,10 @@ const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction:
 
         {/* Inline Feedback Preview when Completed */}
         {isCompleted && visit.feedback && !showHistory && (
-          <div className="mt-4 p-4 bg-white/60 border border-emerald-100 rounded-2xl flex items-center justify-between">
+          <div 
+            onClick={() => setShowHistory(true)}
+            className="mt-4 p-4 bg-white/60 border border-emerald-100 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-emerald-50 transition-colors"
+          >
             <div className="flex items-center gap-3">
               <div className="flex text-amber-400 text-[10px]">
                 {Array.from({length: 5}).map((_, i) => (
@@ -341,7 +305,7 @@ const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction:
               <p className="text-[10px] font-bold text-slate-600 italic line-clamp-1">"{visit.feedback.notes}"</p>
             </div>
             <div className="flex gap-2">
-               <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">Hot Lead</span>
+               <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">View Full Context</span>
             </div>
           </div>
         )}
@@ -349,7 +313,6 @@ const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction:
 
       {showHistory && (
         <div className="px-6 pb-6 bg-slate-50/50 border-t border-slate-50 animate-slide-up pt-6 space-y-6">
-          {/* Feedback Details Section */}
           {visit.feedback && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-4">
@@ -387,9 +350,6 @@ const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction:
                         <p className="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Proposed Action</p>
                         <p className="text-sm font-black uppercase">{visit.feedback.nextAction}</p>
                       </div>
-                      <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center">
-                        <i className="fas fa-arrow-trend-up"></i>
-                      </div>
                     </div>
                     <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center">
                       <div>
@@ -407,7 +367,6 @@ const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction:
             </div>
           )}
 
-          {/* Visit Timeline Section */}
           <div>
             <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Visit Timeline</h4>
             <div className="space-y-4">
@@ -456,10 +415,6 @@ const VisitDetailsPopup: React.FC<{ visit: SiteVisit, onClose: () => void, onAct
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date/Time</span>
           <span className="text-xs font-black text-slate-700">{new Date(visit.scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
         </div>
-        <div className="flex justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</span>
-          <span className="text-xs font-black text-indigo-600 uppercase">{visit.status}</span>
-        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {visit.status !== 'Completed' ? (
@@ -486,11 +441,11 @@ const RescheduleModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfi
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">New Date & Time</label>
-            <input type="datetime-local" value={date} onChange={e => setDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs focus:bg-white focus:border-indigo-600 outline-none transition-all shadow-sm" />
+            <input type="datetime-local" value={date} onChange={e => setDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none shadow-sm" />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Reason for Reschedule</label>
-            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:bg-white focus:border-indigo-600 shadow-sm" placeholder="e.g. Client requested postponement..."></textarea>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Reason</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm" placeholder="Reason..."></textarea>
           </div>
         </div>
         <div className="flex gap-4">
@@ -510,8 +465,8 @@ const CancelModal: React.FC<{ visit: SiteVisit, onClose: () => void, onConfirm: 
       <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6">
         <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Cancel Visit</h3>
         <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Reason for Cancellation</label>
-          <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:bg-white focus:border-red-500 shadow-sm" placeholder="e.g. Lead dropped interest..."></textarea>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Reason</label>
+          <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm" placeholder="Reason..."></textarea>
         </div>
         <div className="flex gap-4">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase">Keep Visit</button>
@@ -565,23 +520,18 @@ const FeedbackModal: React.FC<{ visit: SiteVisit, onClose: () => void, onSubmit:
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">What did client like?</label>
-              <textarea value={likes} onChange={e => setLikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:bg-white focus:border-indigo-600 shadow-sm" placeholder="Vastu, ventilation, etc..."></textarea>
+              <textarea value={likes} onChange={e => setLikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm"></textarea>
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Concerns / Dislikes</label>
-              <textarea value={dislikes} onChange={e => setDislikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:bg-white focus:border-indigo-600 shadow-sm" placeholder="Price, floor level, etc..."></textarea>
+              <textarea value={dislikes} onChange={e => setDislikes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none shadow-sm"></textarea>
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Special Notes (Vastu, Parking, etc.)</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:bg-white focus:border-indigo-600 shadow-sm" placeholder="Any specific requirements shared..."></textarea>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Closing Probability</label>
-              <select value={prob} onChange={e => setProb(e.target.value as ClientStatus)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black outline-none focus:bg-white focus:border-indigo-600 shadow-sm">
+              <select value={prob} onChange={e => setProb(e.target.value as ClientStatus)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black outline-none shadow-sm">
                 <option value={ClientStatus.HOT}>Hot</option>
                 <option value={ClientStatus.WARM}>Warm</option>
                 <option value={ClientStatus.COLD}>Cold</option>
@@ -589,7 +539,7 @@ const FeedbackModal: React.FC<{ visit: SiteVisit, onClose: () => void, onSubmit:
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Next Action</label>
-              <select value={nextAction} onChange={e => setNextAction(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black outline-none focus:bg-white focus:border-indigo-600 shadow-sm">
+              <select value={nextAction} onChange={e => setNextAction(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black outline-none shadow-sm">
                 <option>Second Visit</option>
                 <option>Send Details</option>
                 <option>Send Quotation</option>
@@ -599,7 +549,7 @@ const FeedbackModal: React.FC<{ visit: SiteVisit, onClose: () => void, onSubmit:
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Next Follow-up</label>
-              <input type="datetime-local" value={nextDate} onChange={e => setNextDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs focus:bg-white focus:border-indigo-600 outline-none shadow-sm" />
+              <input type="datetime-local" value={nextDate} onChange={e => setNextDate(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none shadow-sm" />
             </div>
           </div>
         </div>
