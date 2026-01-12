@@ -7,14 +7,16 @@ interface HeaderProps {
   onSearchChange: (query: string) => void;
   onAddClick: () => void;
   onFilterClick: () => void;
+  theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick, onFilterClick }) => {
+const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick, onFilterClick, theme, onToggleTheme }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Show secondary bar on primary module pages as per requirements
   const isMainPage = ['/clients', '/visits', '/properties'].includes(location.pathname);
+  const isExpandedAddPage = ['/clients', '/properties'].includes(location.pathname);
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -30,7 +32,7 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
   return (
     <div className="fixed top-0 left-0 right-0 z-50">
       {/* Top Brand Row */}
-      <header className="h-16 bg-white border-b border-slate-100 px-4 sm:px-6 flex items-center justify-between shadow-sm">
+      <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 sm:px-6 flex items-center justify-between shadow-sm transition-colors duration-300">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate('/')} 
@@ -40,13 +42,21 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
               <i className="fas fa-home-alt text-white text-sm"></i>
             </div>
             <div className="text-left">
-              <span className="block font-black text-slate-900 leading-none text-sm tracking-tight">Estate Flow</span>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">CRM Solutions</span>
+              <span className="block font-black text-slate-900 dark:text-white leading-none text-sm tracking-tight">Estate Flow</span>
+              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">CRM Solutions</span>
             </div>
           </button>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <button 
+            onClick={onToggleTheme}
+            className="w-9 h-9 btn-3d btn-3d-white flex items-center justify-center rounded-xl transition-all"
+            title="Toggle Theme"
+          >
+            <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'} text-sm`}></i>
+          </button>
+
           <button 
             onClick={() => navigate('/emi')}
             className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${
@@ -71,32 +81,35 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
 
       {/* Secondary Search/Add/Filter Bar for Main Pages */}
       {isMainPage && (
-        <div className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 flex items-center gap-2 animate-slide-up">
+        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-700 px-4 py-3 flex items-center gap-2 animate-slide-up transition-colors duration-300">
           <div className="flex-1 relative">
-            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs"></i>
             <input 
               type="text"
               placeholder={`Search ${getPageTitle()}...`}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-100 dark:bg-slate-700 border-none rounded-xl text-xs font-semibold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-slate-400 dark:placeholder-slate-500"
             />
           </div>
           
-          <button 
-            onClick={onFilterClick}
-            className="w-10 h-10 btn-3d btn-3d-white flex items-center justify-center rounded-xl"
-            title="Filter"
-          >
-            <i className="fas fa-filter text-xs"></i>
-          </button>
+          {!isExpandedAddPage && (
+            <button 
+              onClick={onFilterClick}
+              className="w-10 h-10 btn-3d btn-3d-white flex items-center justify-center rounded-xl"
+              title="Filter"
+            >
+              <i className="fas fa-filter text-xs"></i>
+            </button>
+          )}
 
           <button 
             onClick={onAddClick}
-            className="w-10 h-10 btn-3d btn-3d-indigo text-white flex items-center justify-center rounded-xl"
+            className={`h-10 btn-3d btn-3d-indigo text-white flex items-center justify-center rounded-xl gap-2 transition-all ${isExpandedAddPage ? 'px-6' : 'w-10'}`}
             title="Add New"
           >
             <i className="fas fa-plus text-sm"></i>
+            {isExpandedAddPage && <span className="text-[10px] font-black uppercase tracking-widest">Add</span>}
           </button>
         </div>
       )}

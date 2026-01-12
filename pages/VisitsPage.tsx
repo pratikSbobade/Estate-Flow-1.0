@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SiteVisit, ClientStatus } from '../types';
 
@@ -11,12 +11,18 @@ interface VisitsPageProps {
   onBookAtDate?: (date: string) => void;
 }
 
+type SortField = 'date' | 'name' | 'status';
+
 const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVisit, onAddVisit, onBookAtDate }) => {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [activeModal, setActiveModal] = useState<{visit: SiteVisit, type: 'feedback' | 'reschedule' | 'cancel' | 'details'} | null>(null);
   const [dayAgenda, setDayAgenda] = useState<{ date: string, visits: SiteVisit[] } | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
   const location = useLocation();
 
   useEffect(() => {
@@ -26,10 +32,26 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
     }
   }, [location.state]);
 
-  const filteredVisits = visits.filter(v => 
-    v.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    v.propertyName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredAndSortedVisits = useMemo(() => {
+    let result = visits.filter(v => 
+      v.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.propertyName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    result.sort((a, b) => {
+      let comparison = 0;
+      if (sortField === 'date') {
+        comparison = new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      } else if (sortField === 'name') {
+        comparison = a.clientName.localeCompare(b.clientName);
+      } else if (sortField === 'status') {
+        comparison = a.status.localeCompare(b.status);
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [visits, searchQuery, sortField, sortOrder]);
 
   const handleUpdateVisit = (visitId: string, updates: Partial<SiteVisit>) => {
     const visit = visits.find(v => v.id === visitId);
@@ -66,6 +88,16 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
     setTimeout(() => setHighlightedVisitId(null), 3000);
   };
 
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+    setIsSortOpen(false);
+  };
+
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
@@ -81,9 +113,38 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Visit Management</h1>
-          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest">{filteredVisits.length} Records</p>
+          <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest">{filteredAndSortedVisits.length} Records</p>
         </div>
-        <div className="flex bg-white shadow-sm border border-slate-100 rounded-xl p-1 gap-1">
+        <div className="flex bg-white shadow-sm border border-slate-100 rounded-xl p-1 gap-1 relative">
+          <button 
+            onClick={() => setIsSortOpen(!isSortOpen)}
+            className={`w-8 h-8 rounded-lg transition-all flex items-center justify-center ${isSortOpen ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+            title="Sort Visits"
+          >
+            <i className="fas fa-sort-amount-down text-[10px]"></i>
+          </button>
+
+          {isSortOpen && (
+            <div className="absolute top-full mt-2 right-0 w-44 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 p-2 animate-slide-up">
+              {[
+                { id: 'date', label: 'By Date' },
+                { id: 'name', label: 'By Client' },
+                { id: 'status', label: 'By Status' }
+              ].map(opt => (
+                <button 
+                  key={opt.id}
+                  onClick={() => toggleSort(opt.id as SortField)}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-between ${sortField === opt.id ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50'}`}
+                >
+                  {opt.label}
+                  {sortField === opt.id && <i className={`fas fa-chevron-${sortOrder === 'asc' ? 'up' : 'down'} text-[8px]`}></i>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="w-[1px] bg-slate-100 mx-0.5"></div>
+
           <button 
             onClick={() => setViewMode('calendar')}
             className={`w-8 h-8 rounded-lg transition-all flex items-center justify-center ${viewMode === 'calendar' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
@@ -157,7 +218,7 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredVisits.map(visit => (
+          {filteredAndSortedVisits.map(visit => (
             <VisitCard 
               key={visit.id} 
               visit={visit} 
@@ -166,6 +227,12 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
               onNextAction={() => alert(`Initiating Next Action: ${visit.feedback?.nextAction}`)} 
             />
           ))}
+          {filteredAndSortedVisits.length === 0 && (
+            <div className="py-20 text-center bg-white rounded-[3rem] border border-dashed border-slate-200">
+              <i className="fas fa-calendar-day text-slate-200 text-4xl mb-4"></i>
+              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No visits matching search</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -397,7 +464,7 @@ const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction:
 
 const VisitDetailsPopup: React.FC<{ visit: SiteVisit, onClose: () => void, onAction: (type: any) => void }> = ({ visit, onClose, onAction }) => (
   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-6">
-    <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-8 animate-slide-up space-y-6">
+    <div className="bg-white w-full max-sm rounded-[2.5rem] shadow-2xl p-8 animate-slide-up space-y-6">
       <div className="flex justify-between items-start">
         <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
           <i className="fas fa-calendar-day text-xl"></i>

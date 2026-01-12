@@ -1,7 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Property, PropertyConfiguration } from '../types';
-import { GoogleGenAI } from "@google/genai";
 
 interface AddPropertyModalProps {
   initialData?: Property;
@@ -11,25 +10,24 @@ interface AddPropertyModalProps {
 
 const SECTIONS = [
   { id: 'basic', label: '1. Basic Details' },
-  { id: 'ai', label: '2. AI Description' },
-  { id: 'location', label: '3. Location' },
-  { id: 'project', label: '4. Project Specs' },
-  { id: 'config', label: '5. Configurations' },
-  { id: 'finance', label: '6. Financials' },
-  { id: 'legal', label: '7. Ownership' },
-  { id: 'amenities', label: '8. Amenities' },
-  { id: 'media', label: '9. Media' },
-  { id: 'source', label: '10. Source' }
+  { id: 'location', label: '2. Location' },
+  { id: 'project', label: '3. Project Specs' },
+  { id: 'config', label: '4. Configurations' },
+  { id: 'finance', label: '5. Financials' },
+  { id: 'legal', label: '6. Ownership' },
+  { id: 'amenities', label: '7. Amenities' },
+  { id: 'media', label: '8. Media' },
+  { id: 'source', label: '9. Source' }
 ];
 
 const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClose, onSubmit }) => {
   const [activeTab, setActiveTab] = useState('basic');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [aiTone, setAiTone] = useState<'Professional' | 'Luxury' | 'Urgent' | 'Friendly'>('Professional');
   const [toast, setToast] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<Partial<Property>>(initialData || {
     id: `P-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -56,48 +54,31 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
     status: 'Available'
   });
 
+  // AUTO-SYNC: Update financial range when configurations change
+  useEffect(() => {
+    if (formData.configurations && formData.configurations.length > 0) {
+      const prices = formData.configurations.map(c => c.costing).filter(p => p > 0);
+      if (prices.length > 0) {
+        const min = Math.min(...prices);
+        const max = Math.max(...prices);
+        
+        if (formData.financials?.priceMin !== min || formData.financials?.priceMax !== max) {
+          setFormData(prev => ({
+            ...prev,
+            financials: {
+              ...(prev.financials || { allInclusive: true, maintenanceAmount: 0, maintenanceFrequency: 'Monthly', bookingAmount: 0, negotiable: true }),
+              priceMin: min,
+              priceMax: max
+            }
+          }));
+        }
+      }
+    }
+  }, [formData.configurations]);
+
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
-  };
-
-  const handleGenerateAI = async () => {
-    if (!formData.title || !formData.type) {
-      showToast("Please enter a title and type first", "error");
-      return;
-    }
-    
-    setIsGenerating(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `Act as a world-class real estate copywriter. Write a ${aiTone} property description for a ${formData.type} named "${formData.title}" located in ${formData.location?.area || 'Nagpur'}. 
-      Amenities include: ${formData.amenities?.join(', ') || 'Modern utilities'}. 
-      Listing type is ${formData.listingType}. 
-      Keep it between 100-150 words. Focus on the USP and lifestyle.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt
-      });
-
-      const text = response.text;
-      if (text) {
-        handleChange('description', text);
-        showToast("AI Description Generated!");
-      }
-    } catch (err) {
-      console.error(err);
-      showToast("Failed to generate description", "error");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const copyToClipboard = () => {
-    if (formData.description) {
-      navigator.clipboard.writeText(formData.description);
-      showToast("Copied to clipboard!");
-    }
   };
 
   const handleChange = (path: string, value: any) => {
@@ -110,6 +91,53 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
         [keys[0]]: { ...((prev as any)[keys[0]] || {}), [keys[1]]: value }
       }));
     }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    // Fixed: Added explicit type annotation (file: File) to resolve TypeScript error on line 109
+    const base64Files = await Promise.all(Array.from(files).map((file: File) => fileToBase64(file)));
+    const currentPhotos = formData.media?.photos || [];
+    handleChange('media.photos', [...currentPhotos, ...base64Files]);
+    showToast(`${files.length} Photo(s) Added`);
+  };
+
+  const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    // Fixed: Added explicit type annotation (file: File) to resolve TypeScript errors on lines 120 and 121
+    const newDocs = await Promise.all(Array.from(files).map(async (file: File) => ({
+      name: file.name,
+      url: await fileToBase64(file)
+    })));
+
+    const currentDocs = formData.media?.documents || [];
+    handleChange('media.documents', [...currentDocs, ...newDocs]);
+    showToast(`${files.length} Document(s) Added`);
+  };
+
+  const removePhoto = (index: number) => {
+    const photos = [...(formData.media?.photos || [])];
+    photos.splice(index, 1);
+    handleChange('media.photos', photos);
+  };
+
+  const removeDoc = (index: number) => {
+    const docs = [...(formData.media?.documents || [])];
+    docs.splice(index, 1);
+    handleChange('media.documents', docs);
   };
 
   const handleTowerChange = (index: number, field: string, value: any) => {
@@ -185,20 +213,20 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
         </div>
       )}
 
-      <div className="bg-white w-full max-w-5xl h-[95vh] sm:h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up">
-        <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-white shrink-0">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-5xl h-[95vh] sm:h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up transition-colors duration-300">
+        <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-white dark:bg-slate-800 shrink-0">
           <div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase tracking-widest">
+            <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight uppercase tracking-widest">
               {initialData ? 'Edit Property' : 'Add New Property'}
             </h2>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Listing ID: {formData.id}</p>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Listing ID: {formData.id}</p>
           </div>
           <button onClick={onClose} className="w-12 h-12 btn-3d btn-3d-white rounded-2xl flex items-center justify-center text-slate-400">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
 
-        <div className="px-6 shrink-0 border-b border-slate-50">
+        <div className="px-6 shrink-0 border-b border-slate-50 dark:border-slate-700">
           <div ref={navRef} className="flex items-center gap-2 overflow-x-auto hide-scrollbar p-2">
             {SECTIONS.map(s => (
               <button
@@ -206,7 +234,7 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
                 id={`nav-${s.id}`}
                 onClick={() => scrollToTab(s.id)}
                 className={`px-5 py-3 text-[9px] font-black uppercase tracking-widest whitespace-nowrap rounded-xl transition-all ${
-                  activeTab === s.id ? 'bg-[#4f46e5] text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                  activeTab === s.id ? 'bg-[#4f46e5] text-white shadow-lg shadow-indigo-100' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
                 {s.label}
@@ -223,63 +251,8 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
               <Select label="Property Type" value={formData.type} onChange={v => handleChange('type', v)} options={['Apartment', 'Plot', 'Villa', 'Commercial']} />
               <Select label="Listing Type" value={formData.listingType} onChange={v => handleChange('listingType', v)} options={['Sale', 'Rent', 'Lease', 'Resale', 'Pre-launch', 'Underconstruction']} />
             </div>
-          </Section>
-
-          <Section id="ai" title="AI Description Generator" subtitle="Generate high-converting copy using Gemini AI">
-            <div className="bg-indigo-50 border border-indigo-100 p-8 rounded-[2rem] space-y-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                    <i className="fas fa-magic"></i>
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Select Tone</h4>
-                    <div className="flex gap-2 mt-2">
-                      {['Professional', 'Luxury', 'Urgent', 'Friendly'].map(tone => (
-                        <button
-                          key={tone}
-                          onClick={() => setAiTone(tone as any)}
-                          className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all ${aiTone === tone ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-400 border border-indigo-100'}`}
-                        >
-                          {tone}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={handleGenerateAI}
-                  disabled={isGenerating || !formData.title}
-                  className={`px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-xl transition-all ${isGenerating ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200'}`}
-                >
-                  {isGenerating ? (
-                    <><i className="fas fa-spinner animate-spin"></i> Generating...</>
-                  ) : (
-                    <><i className="fas fa-wand-magic-sparkles"></i> {formData.description ? 'Regenerate' : 'Generate AI Description'}</>
-                  )}
-                </button>
-              </div>
-
-              <div className="relative">
-                <textarea
-                  value={formData.description || ''}
-                  onChange={e => handleChange('description', e.target.value)}
-                  placeholder="AI generated description will appear here..."
-                  className="w-full p-6 bg-white border border-indigo-100 rounded-[2rem] text-sm font-medium text-slate-700 outline-none focus:ring-4 focus:ring-indigo-100 transition-all min-h-[160px] resize-none"
-                />
-                {formData.description && (
-                  <button 
-                    onClick={copyToClipboard}
-                    className="absolute top-4 right-4 w-10 h-10 bg-slate-50 hover:bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center shadow-sm"
-                    title="Copy to Clipboard"
-                  >
-                    <i className="fas fa-copy"></i>
-                  </button>
-                )}
-              </div>
-              <p className="text-[9px] font-bold text-indigo-300 italic px-2">
-                * Generates optimized content using Title, Type, and Amenities.
-              </p>
+            <div className="mt-6">
+              <Input label="Property Description" type="textarea" value={formData.description} onChange={v => handleChange('description', v)} placeholder="Enter details about the property..." />
             </div>
           </Section>
 
@@ -302,11 +275,11 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
               </div>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Towers & Possession</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Towers & Possession</h4>
                   <button onClick={addTower} className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest">+ Add Tower</button>
                 </div>
                 {formData.towers?.map((t, idx) => (
-                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm relative pt-10 sm:pt-4">
+                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white dark:bg-slate-700 p-4 rounded-xl border border-slate-100 dark:border-slate-600 shadow-sm relative pt-10 sm:pt-4">
                     <button 
                       onClick={() => removeTower(idx)}
                       className="absolute top-2 right-2 text-red-400 hover:text-red-600 p-1"
@@ -324,11 +297,11 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
           <Section id="config" title="Property Configurations" subtitle="Detailed layouts and pricing per unit">
             <div className="space-y-6">
               <div className="flex justify-between items-center">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">BHK / Config Details</h4>
+                <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">BHK / Config Details</h4>
                 <button onClick={addConfig} className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest">+ Add Configuration</button>
               </div>
               {formData.configurations?.map((c, idx) => (
-                <div key={idx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4 relative pt-12 sm:pt-6">
+                <div key={idx} className="bg-white dark:bg-slate-700 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-600 shadow-sm space-y-4 relative pt-12 sm:pt-6">
                   <button 
                     onClick={() => removeConfig(idx)}
                     className="absolute top-4 right-4 text-red-400 hover:text-red-600 p-1"
@@ -374,7 +347,7 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
                 <Select label="Occupancy Status" value={formData.legal?.occupancyStatus} onChange={v => handleChange('legal.occupancyStatus', v)} options={['Under Construction', 'Ready to Move', 'Occupied', 'Vacant']} />
               </div>
               <div className="space-y-2">
-                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Owner Names & Companies</h4>
+                <h4 className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Owner Names & Companies</h4>
                 {formData.legal?.owners?.map((o, idx) => (
                   <div key={idx} className="grid grid-cols-2 gap-4">
                     <Input label="Owner Name" value={o.name} onChange={v => {
@@ -404,12 +377,91 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
             </div>
           </Section>
 
-          <Section id="media" title="Media & Documents" subtitle="Visuals and paperwork">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <Input label="Photo URLs (comma separated)" value={formData.media?.photos?.join(',')} onChange={v => handleChange('media.photos', v.split(',').map((s:string) => s.trim()))} />
-              <Input label="Video / Virtual Tour URL" value={formData.media?.videoUrl} onChange={v => handleChange('media.videoUrl', v)} />
-              <Input label="Floor Plan URL" value={formData.media?.floorPlanUrl} onChange={v => handleChange('media.floorPlanUrl', v)} />
-              <Input label="Key Document Links" placeholder="Agreement, Brochure, etc." value={formData.media?.documents?.map(d => d.url).join(',')} onChange={v => handleChange('media.documents', v.split(',').map((u:string) => ({ name: 'Document', url: u.trim() })))} />
+          <Section id="media" title="Media & Documents" subtitle="Visuals and paperwork (Upload local files or add links)">
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                {/* Photos Section */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">Property Photos</label>
+                    <button 
+                      onClick={() => photoInputRef.current?.click()}
+                      className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                    >
+                      <i className="fas fa-upload"></i> Upload
+                    </button>
+                    <input type="file" ref={photoInputRef} multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                  </div>
+                  <Input 
+                    label="Add Photo URLs (separate by comma)" 
+                    value={formData.media?.photos?.filter(p => p.startsWith('http')).join(',')} 
+                    onChange={v => {
+                      const localFiles = formData.media?.photos?.filter(p => p.startsWith('data:')) || [];
+                      const remoteLinks = v.split(',').map((s:string) => s.trim()).filter(Boolean);
+                      handleChange('media.photos', [...localFiles, ...remoteLinks]);
+                    }} 
+                  />
+                  
+                  {/* Gallery Preview */}
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-4">
+                    {formData.media?.photos?.map((photo, idx) => (
+                      <div key={idx} className="aspect-square bg-slate-100 dark:bg-slate-700 rounded-xl relative overflow-hidden border border-slate-200 dark:border-slate-600 group">
+                        <img src={photo} alt={`Property ${idx}`} className="w-full h-full object-cover" />
+                        <button 
+                          onClick={() => removePhoto(idx)}
+                          className="absolute inset-0 bg-red-600/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                        >
+                          <i className="fas fa-trash text-white text-xs"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Documents Section */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">Property Documents</label>
+                    <button 
+                      onClick={() => docInputRef.current?.click()}
+                      className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                    >
+                      <i className="fas fa-file-upload"></i> Upload
+                    </button>
+                    <input type="file" ref={docInputRef} multiple className="hidden" onChange={handleDocUpload} />
+                  </div>
+                  <Input 
+                    label="Add Doc URLs (Agreements, Brochures, etc.)" 
+                    placeholder="Comma separated links..."
+                    value={formData.media?.documents?.filter(d => d.url.startsWith('http')).map(d => d.url).join(',')} 
+                    onChange={v => {
+                      const localDocs = formData.media?.documents?.filter(d => d.url.startsWith('data:')) || [];
+                      const remoteDocs = v.split(',').map((u:string) => ({ name: 'Document Link', url: u.trim() })).filter(d => d.url);
+                      handleChange('media.documents', [...localDocs, ...remoteDocs]);
+                    }} 
+                  />
+                  
+                  {/* Doc List */}
+                  <div className="space-y-2 mt-4">
+                    {formData.media?.documents?.map((doc, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-xl shadow-sm">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <i className={`fas ${doc.url.startsWith('data:') ? 'fa-file-alt' : 'fa-link'} text-indigo-500`}></i>
+                          <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 truncate uppercase">{doc.name}</span>
+                        </div>
+                        <button onClick={() => removeDoc(idx)} className="text-red-400 hover:text-red-600 p-1">
+                          <i className="fas fa-times"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <Input label="Video / Virtual Tour URL" value={formData.media?.videoUrl} onChange={v => handleChange('media.videoUrl', v)} placeholder="YouTube, Vimeo or Drive Link" />
+                <Input label="Floor Plan URL (Direct Link)" value={formData.media?.floorPlanUrl} onChange={v => handleChange('media.floorPlanUrl', v)} placeholder="Image URL or Drive PDF Link" />
+              </div>
             </div>
           </Section>
 
@@ -424,7 +476,7 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
           <div className="h-32"></div>
         </div>
 
-        <div className="p-8 border-t bg-slate-50 flex gap-4 shrink-0">
+        <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex gap-4 shrink-0 transition-colors">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white font-black text-[10px] uppercase rounded-2xl">Discard</button>
           <button onClick={handleSubmit} className="flex-[2] py-4 btn-3d btn-3d-indigo text-white font-black text-[10px] uppercase rounded-2xl">
             {initialData ? 'Update Property' : 'Save Property'}
@@ -438,10 +490,10 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
 const Section: React.FC<{ id: string, title: string, subtitle: string, children: React.ReactNode }> = ({ id, title, subtitle, children }) => (
   <div id={`section-${id}`} className="space-y-6">
     <div>
-      <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">{title}</h3>
-      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{subtitle}</p>
+      <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">{title}</h3>
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">{subtitle}</p>
     </div>
-    <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+    <div className="bg-slate-50/50 dark:bg-slate-900/50 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors">
       {children}
     </div>
   </div>
@@ -449,13 +501,13 @@ const Section: React.FC<{ id: string, title: string, subtitle: string, children:
 
 const Input: React.FC<{ label: string, value: any, onChange?: (v: any) => void, type?: string, placeholder?: string, readOnly?: boolean }> = ({ label, value, onChange, type = 'text', placeholder, readOnly }) => (
   <div className="space-y-1.5">
-    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">{label}</label>
+    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label>
     {type === 'textarea' ? (
       <textarea
         value={value || ''}
         onChange={e => onChange?.(e.target.value)}
         placeholder={placeholder}
-        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#4f46e5] shadow-sm min-h-[100px]"
+        className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[100px] transition-colors"
       />
     ) : (
       <input
@@ -464,7 +516,7 @@ const Input: React.FC<{ label: string, value: any, onChange?: (v: any) => void, 
         onChange={e => onChange?.(e.target.value)}
         placeholder={placeholder}
         readOnly={readOnly}
-        className={`w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#4f46e5] shadow-sm ${readOnly ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+        className={`w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm ${readOnly ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed' : ''} transition-colors`}
       />
     )}
   </div>
@@ -472,16 +524,16 @@ const Input: React.FC<{ label: string, value: any, onChange?: (v: any) => void, 
 
 const Select: React.FC<{ label: string, value: any, onChange: (v: any) => void, options: string[] }> = ({ label, value, onChange, options }) => (
   <div className="space-y-1.5">
-    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">{label}</label>
+    <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label>
     <div className="relative">
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black appearance-none outline-none focus:border-[#4f46e5] shadow-sm"
+        className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-black dark:text-white appearance-none outline-none focus:border-[#4f46e5] shadow-sm transition-colors"
       >
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
-      <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+      <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600 pointer-events-none text-[10px]"></i>
     </div>
   </div>
 );
@@ -493,7 +545,7 @@ const Multiselect: React.FC<{ label: string, value: string[], onChange: (v: stri
   };
   return (
     <div className="space-y-2">
-      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">{label}</label>
+      <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label>
       <div className="flex flex-wrap gap-2">
         {options.map(o => (
           <button
@@ -501,7 +553,7 @@ const Multiselect: React.FC<{ label: string, value: string[], onChange: (v: stri
             type="button"
             onClick={() => toggle(o)}
             className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-              value.includes(o) ? 'bg-[#4f46e5] text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200 hover:border-[#4f46e5]'
+              value.includes(o) ? 'bg-[#4f46e5] text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 border border-slate-200 dark:border-slate-600 hover:border-[#4f46e5]'
             }`}
           >
             {o}

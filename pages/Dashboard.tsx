@@ -46,16 +46,16 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
     <div className="space-y-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Agent Dashboard</h1>
-          <p className="text-slate-500 font-medium">Monitoring Nagpur region performance.</p>
+          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Agent Dashboard</h1>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Monitoring Nagpur region performance.</p>
         </div>
-        <div className="flex items-center gap-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
-           <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+        <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-3 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 transition-colors">
+           <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
              <i className="fas fa-trophy text-xl"></i>
            </div>
            <div>
-             <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Team Rank</p>
-             <p className="font-black text-slate-800">#3 / 12 Agents</p>
+             <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Team Rank</p>
+             <p className="font-black text-slate-800 dark:text-white">#3 / 12 Agents</p>
            </div>
         </div>
       </div>
@@ -70,47 +70,47 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
             }`}>
               <i className={`fas ${stat.icon} text-xl`}></i>
             </div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</p>
-            <h3 className="text-2xl font-black text-slate-900 mt-1">{stat.value}</h3>
-            <p className="text-xs font-bold text-slate-400 mt-2">{stat.sub}</p>
+            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{stat.label}</p>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{stat.value}</h3>
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mt-2">{stat.sub}</p>
           </div>
         ))}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 card-neo p-8 rounded-[2.5rem]">
-          <h2 className="text-xl font-black text-slate-800 tracking-tight mb-6">Call Log Maintenance</h2>
+          <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight mb-6">Call Log Maintenance</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Lead</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Summary</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Time</th>
+                <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700">
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Lead</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Summary</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-right">Time</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
                 {callInteractions.slice(0, 5).map((log) => {
                   const client = clients.find(c => c.id === log.clientId);
                   return (
-                    <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors">
                       <td className="px-6 py-4">
-                        <p className="text-xs font-black text-slate-800 uppercase leading-tight">{client ? `${client.firstName} ${client.lastName}` : 'Guest'}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">{log.clientId}</p>
+                        <p className="text-xs font-black text-slate-800 dark:text-white uppercase leading-tight">{client ? `${client.firstName} ${client.lastName}` : 'Guest'}</p>
+                        <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">{log.clientId}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-[9px] font-black text-indigo-600 uppercase bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+                        <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-800">
                           {log.description.split(': ')[1]?.split(' - ')[0] || 'Called'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-[10px] font-medium text-slate-500 italic truncate max-w-[200px]">
+                        <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 italic truncate max-w-[200px]">
                           {log.description.split(' - ')[1] || 'No notes.'}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-[10px] font-bold text-slate-600">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        <p className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                       </td>
                     </tr>
                   );
@@ -121,14 +121,17 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
         </div>
 
         <div className="card-neo p-8 rounded-[2.5rem]">
-          <h2 className="text-xl font-black text-slate-800 tracking-tight mb-4">Disposition Breakdown</h2>
+          <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight mb-4">Disposition Breakdown</h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                   {pieData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '10px', color: '#fff' }}
+                  itemStyle={{ color: '#fff' }}
+                />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase' }} />
               </PieChart>
             </ResponsiveContainer>

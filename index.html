@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,12 +11,35 @@
     <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ['Plus Jakarta Sans', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
     <style>
       body {
         font-family: 'Plus Jakarta Sans', sans-serif;
-        background-color: #f1f5f9;
         overflow-x: hidden;
+        transition: background-color 0.3s ease, color 0.3s ease;
       }
+      
+      /* Theme specific base styles */
+      body.dark {
+        background-color: #0f172a; /* slate-900 */
+        color: #f8fafc; /* slate-50 */
+      }
+      body:not(.dark) {
+        background-color: #f1f5f9; /* slate-100 */
+        color: #0f172a; /* slate-900 */
+      }
+
       /* Generic 3D Button Base */
       .btn-3d {
         transition: transform 0.1s ease, box-shadow 0.1s ease;
@@ -71,9 +95,19 @@
         color: #64748b;
         border: 1px solid #f1f5f9;
       }
+      .dark .btn-3d-white {
+        background-color: #1e293b; /* slate-800 */
+        box-shadow: 0 4px 0 0 #0f172a;
+        color: #cbd5e1;
+        border: 1px solid #334155;
+      }
       .btn-3d-white:hover {
         box-shadow: 0 6px 0 0 #e2e8f0;
         color: #4f46e5;
+      }
+      .dark .btn-3d-white:hover {
+        box-shadow: 0 6px 0 0 #0f172a;
+        color: #818cf8;
       }
       .btn-3d-white:active {
         box-shadow: 0 0px 0 0 #e2e8f0;
@@ -110,6 +144,11 @@
         border: 1px solid rgba(255, 255, 255, 0.3);
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
       }
+      .dark .card-neo {
+        background: #1e293b; /* slate-800 */
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+      }
       @keyframes slideUp {
         from { transform: translateY(100%); }
         to { transform: translateY(0); }
@@ -143,7 +182,7 @@
 }
 </script>
 </head>
-<body class="bg-[#f6f7f8] font-display antialiased">
+<body class="bg-[#f6f7f8] dark:bg-slate-900 font-display antialiased transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
 </body>

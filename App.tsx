@@ -17,13 +17,13 @@ import { supabase } from './lib/supabase';
 
 const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => (
   <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex items-center justify-center p-6">
-    <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl max-w-sm w-full text-center space-y-6 animate-slide-up">
-      <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+    <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-2xl max-w-sm w-full text-center space-y-6 animate-slide-up">
+      <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-inner">
         <i className="fas fa-check-circle text-4xl"></i>
       </div>
       <div>
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Confirmed!</h3>
-        <p className="text-[10px] font-bold text-slate-500 mt-2 leading-relaxed uppercase tracking-widest">
+        <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Confirmed!</h3>
+        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-2 leading-relaxed uppercase tracking-widest">
           {message}
         </p>
       </div>
@@ -44,6 +44,9 @@ const AppContent: React.FC = () => {
   const [isBookVisitOpen, setIsBookVisitOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+  });
   
   const [clients, setClients] = useState<Client[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -76,6 +79,19 @@ const AppContent: React.FC = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
   const handleGlobalAdd = () => {
     switch (location.pathname) {
       case '/clients': setIsAddClientOpen(true); break;
@@ -104,7 +120,6 @@ const AppContent: React.FC = () => {
   };
 
   const handleUpdateVisit = async (updatedVisit: SiteVisit) => {
-    // Destructure to separate the ID from the payload
     const { id, ...payload } = updatedVisit;
     
     const { error } = await supabase
@@ -122,7 +137,6 @@ const AppContent: React.FC = () => {
   };
 
   const handleAddClient = async (newClient: Client) => {
-    // Strip interactions as it is a virtual property not present in DB schema
     const { interactions, ...payload } = newClient;
     
     const { error } = await supabase.from('clients').upsert([payload]);
@@ -143,7 +157,6 @@ const AppContent: React.FC = () => {
   };
 
   const handleUpdateClient = async (updatedClient: Client) => {
-    // Strip interactions and id from update payload
     const { id, interactions, ...payload } = updatedClient;
 
     const { error } = await supabase
@@ -168,7 +181,10 @@ const AppContent: React.FC = () => {
     } else {
       setProperties(prev => {
         const exists = prev.find(p => p.id === newProperty.id);
-        if (exists) return prev.map(p => p.id === newProperty.id ? newProperty : p);
+        if (exists) {
+          // Robust deep-like merge for local state to ensure all fields reflect
+          return prev.map(p => p.id === newProperty.id ? { ...p, ...newProperty } : p);
+        }
         return [newProperty, ...prev];
       });
       setEditingProperty(null);
@@ -180,22 +196,24 @@ const AppContent: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Initializing Flow...</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Initializing Flow...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f8fafc]">
+    <div className="flex flex-col min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-300">
       <Header 
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onAddClick={handleGlobalAdd}
         onFilterClick={() => alert('Filter options opened')}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
       
       <main className={`flex-grow ${['/clients', '/visits', '/properties'].includes(location.pathname) ? 'pt-32' : 'pt-20'} pb-28 px-4 max-w-7xl mx-auto w-full`}>
