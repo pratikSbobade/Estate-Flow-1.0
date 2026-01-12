@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Property, PropertyConfiguration } from '../types';
+import { GoogleGenAI } from "@google/genai";
 
 interface AddPropertyModalProps {
   initialData?: Property;
@@ -10,18 +11,23 @@ interface AddPropertyModalProps {
 
 const SECTIONS = [
   { id: 'basic', label: '1. Basic Details' },
-  { id: 'location', label: '2. Location' },
-  { id: 'project', label: '3. Project Specs' },
-  { id: 'config', label: '4. Configurations' },
-  { id: 'finance', label: '5. Financials' },
-  { id: 'legal', label: '6. Ownership' },
-  { id: 'amenities', label: '7. Amenities' },
-  { id: 'media', label: '8. Media' },
-  { id: 'source', label: '9. Source' }
+  { id: 'ai', label: '2. AI Description' },
+  { id: 'location', label: '3. Location' },
+  { id: 'project', label: '4. Project Specs' },
+  { id: 'config', label: '5. Configurations' },
+  { id: 'finance', label: '6. Financials' },
+  { id: 'legal', label: '7. Ownership' },
+  { id: 'amenities', label: '8. Amenities' },
+  { id: 'media', label: '9. Media' },
+  { id: 'source', label: '10. Source' }
 ];
 
 const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClose, onSubmit }) => {
   const [activeTab, setActiveTab] = useState('basic');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiTone, setAiTone] = useState<'Professional' | 'Luxury' | 'Urgent' | 'Friendly'>('Professional');
+  const [toast, setToast] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
+  
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
 
@@ -49,6 +55,50 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
     source: { dedicatedRM: '', rmContact: '', tat: '' },
     status: 'Available'
   });
+
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleGenerateAI = async () => {
+    if (!formData.title || !formData.type) {
+      showToast("Please enter a title and type first", "error");
+      return;
+    }
+    
+    setIsGenerating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const prompt = `Act as a world-class real estate copywriter. Write a ${aiTone} property description for a ${formData.type} named "${formData.title}" located in ${formData.location?.area || 'Nagpur'}. 
+      Amenities include: ${formData.amenities?.join(', ') || 'Modern utilities'}. 
+      Listing type is ${formData.listingType}. 
+      Keep it between 100-150 words. Focus on the USP and lifestyle.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt
+      });
+
+      const text = response.text;
+      if (text) {
+        handleChange('description', text);
+        showToast("AI Description Generated!");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to generate description", "error");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (formData.description) {
+      navigator.clipboard.writeText(formData.description);
+      showToast("Copied to clipboard!");
+    }
+  };
 
   const handleChange = (path: string, value: any) => {
     const keys = path.split('.');
@@ -104,6 +154,11 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   }));
 
   const handleSubmit = () => {
+    if (!formData.title || !formData.type) {
+      showToast("Missing Title or Property Type", "error");
+      scrollToTab('basic');
+      return;
+    }
     onSubmit(formData as Property);
   };
 
@@ -124,6 +179,12 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-end sm:items-center justify-center p-0 sm:p-6">
+      {toast && (
+        <div className={`fixed top-10 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-2xl z-[300] animate-bounce text-white font-black text-xs uppercase tracking-widest ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+          {toast.msg}
+        </div>
+      )}
+
       <div className="bg-white w-full max-w-5xl h-[95vh] sm:h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up">
         <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-white shrink-0">
           <div>
@@ -145,7 +206,7 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
                 id={`nav-${s.id}`}
                 onClick={() => scrollToTab(s.id)}
                 className={`px-5 py-3 text-[9px] font-black uppercase tracking-widest whitespace-nowrap rounded-xl transition-all ${
-                  activeTab === s.id ? 'bg-[#136dec] text-white shadow-lg shadow-blue-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                  activeTab === s.id ? 'bg-[#4f46e5] text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 {s.label}
@@ -159,11 +220,66 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <Input label="Listing Title" value={formData.title} onChange={v => handleChange('title', v)} placeholder="e.g. Sunrise Heights Phase 2" />
               <Input label="Possession Date" type="date" value={formData.possessionDate} onChange={v => handleChange('possessionDate', v)} />
-              <div className="col-span-full">
-                <Input label="Description / Highlights" type="textarea" value={formData.description} onChange={v => handleChange('description', v)} />
-              </div>
               <Select label="Property Type" value={formData.type} onChange={v => handleChange('type', v)} options={['Apartment', 'Plot', 'Villa', 'Commercial']} />
               <Select label="Listing Type" value={formData.listingType} onChange={v => handleChange('listingType', v)} options={['Sale', 'Rent', 'Lease', 'Resale', 'Pre-launch', 'Underconstruction']} />
+            </div>
+          </Section>
+
+          <Section id="ai" title="AI Description Generator" subtitle="Generate high-converting copy using Gemini AI">
+            <div className="bg-indigo-50 border border-indigo-100 p-8 rounded-[2rem] space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                    <i className="fas fa-magic"></i>
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Select Tone</h4>
+                    <div className="flex gap-2 mt-2">
+                      {['Professional', 'Luxury', 'Urgent', 'Friendly'].map(tone => (
+                        <button
+                          key={tone}
+                          onClick={() => setAiTone(tone as any)}
+                          className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all ${aiTone === tone ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-400 border border-indigo-100'}`}
+                        >
+                          {tone}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleGenerateAI}
+                  disabled={isGenerating || !formData.title}
+                  className={`px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-xl transition-all ${isGenerating ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200'}`}
+                >
+                  {isGenerating ? (
+                    <><i className="fas fa-spinner animate-spin"></i> Generating...</>
+                  ) : (
+                    <><i className="fas fa-wand-magic-sparkles"></i> {formData.description ? 'Regenerate' : 'Generate AI Description'}</>
+                  )}
+                </button>
+              </div>
+
+              <div className="relative">
+                <textarea
+                  value={formData.description || ''}
+                  onChange={e => handleChange('description', e.target.value)}
+                  placeholder="AI generated description will appear here..."
+                  className="w-full p-6 bg-white border border-indigo-100 rounded-[2rem] text-sm font-medium text-slate-700 outline-none focus:ring-4 focus:ring-indigo-100 transition-all min-h-[160px] resize-none"
+                />
+                {formData.description && (
+                  <button 
+                    onClick={copyToClipboard}
+                    className="absolute top-4 right-4 w-10 h-10 bg-slate-50 hover:bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center shadow-sm"
+                    title="Copy to Clipboard"
+                  >
+                    <i className="fas fa-copy"></i>
+                  </button>
+                )}
+              </div>
+              <p className="text-[9px] font-bold text-indigo-300 italic px-2">
+                * Generates optimized content using Title, Type, and Amenities.
+              </p>
             </div>
           </Section>
 
@@ -187,7 +303,7 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Towers & Possession</h4>
-                  <button onClick={addTower} className="text-[#136dec] text-[10px] font-black uppercase">+ Add Tower</button>
+                  <button onClick={addTower} className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest">+ Add Tower</button>
                 </div>
                 {formData.towers?.map((t, idx) => (
                   <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm relative pt-10 sm:pt-4">
@@ -209,10 +325,10 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">BHK / Config Details</h4>
-                <button onClick={addConfig} className="text-[#136dec] text-[10px] font-black uppercase">+ Add Configuration</button>
+                <button onClick={addConfig} className="text-[#4f46e5] text-[10px] font-black uppercase tracking-widest">+ Add Configuration</button>
               </div>
               {formData.configurations?.map((c, idx) => (
-                <div key={idx} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4 relative pt-12 sm:pt-6">
+                <div key={idx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4 relative pt-12 sm:pt-6">
                   <button 
                     onClick={() => removeConfig(idx)}
                     className="absolute top-4 right-4 text-red-400 hover:text-red-600 p-1"
@@ -339,7 +455,7 @@ const Input: React.FC<{ label: string, value: any, onChange?: (v: any) => void, 
         value={value || ''}
         onChange={e => onChange?.(e.target.value)}
         placeholder={placeholder}
-        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#136dec] shadow-sm min-h-[100px]"
+        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#4f46e5] shadow-sm min-h-[100px]"
       />
     ) : (
       <input
@@ -348,7 +464,7 @@ const Input: React.FC<{ label: string, value: any, onChange?: (v: any) => void, 
         onChange={e => onChange?.(e.target.value)}
         placeholder={placeholder}
         readOnly={readOnly}
-        className={`w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#136dec] shadow-sm ${readOnly ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+        className={`w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#4f46e5] shadow-sm ${readOnly ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
       />
     )}
   </div>
@@ -361,7 +477,7 @@ const Select: React.FC<{ label: string, value: any, onChange: (v: any) => void, 
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black appearance-none outline-none focus:border-[#136dec] shadow-sm"
+        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-black appearance-none outline-none focus:border-[#4f46e5] shadow-sm"
       >
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -385,7 +501,7 @@ const Multiselect: React.FC<{ label: string, value: string[], onChange: (v: stri
             type="button"
             onClick={() => toggle(o)}
             className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-              value.includes(o) ? 'bg-[#136dec] text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200 hover:border-[#136dec]'
+              value.includes(o) ? 'bg-[#4f46e5] text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200 hover:border-[#4f46e5]'
             }`}
           >
             {o}

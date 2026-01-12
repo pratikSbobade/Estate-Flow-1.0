@@ -15,12 +15,35 @@ import AddPropertyModal from './components/AddPropertyModal';
 import BookVisitModal from './components/BookVisitModal';
 import { supabase } from './lib/supabase';
 
+const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => (
+  <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex items-center justify-center p-6">
+    <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl max-w-sm w-full text-center space-y-6 animate-slide-up">
+      <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+        <i className="fas fa-check-circle text-4xl"></i>
+      </div>
+      <div>
+        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Confirmed!</h3>
+        <p className="text-[10px] font-bold text-slate-500 mt-2 leading-relaxed uppercase tracking-widest">
+          {message}
+        </p>
+      </div>
+      <button 
+        onClick={onClose}
+        className="w-full py-4 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100"
+      >
+        Continue
+      </button>
+    </div>
+  </div>
+);
+
 const AppContent: React.FC = () => {
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isBookVisitOpen, setIsBookVisitOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   const [clients, setClients] = useState<Client[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -30,7 +53,6 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Initial Data Fetch from Supabase
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -66,39 +88,48 @@ const AppContent: React.FC = () => {
   const handleAddVisit = async (newVisit: SiteVisit) => {
     const visitWithHistory = {
       ...newVisit,
-      history: [{ status: 'Scheduled', date: new Date().toISOString(), note: 'Visit confirmed' }]
+      history: [{ status: 'Scheduled', date: new Date().toISOString(), note: 'Visit confirmed via CRM' }]
     };
 
     const { error } = await supabase.from('site_visits').insert([visitWithHistory]);
     
     if (error) {
-      console.error('Error adding visit:', error);
-      alert('Error scheduling visit. Please try again.');
+      console.error('Error adding visit:', error.message || error);
+      alert(`Error scheduling visit: ${error.message || 'Unknown error'}`);
     } else {
       setVisits(prev => [visitWithHistory, ...prev]);
       setIsBookVisitOpen(false);
+      setSuccessMessage('Relevant activity is scheduled as per the records.');
     }
   };
 
   const handleUpdateVisit = async (updatedVisit: SiteVisit) => {
+    // Destructure to separate the ID from the payload
+    const { id, ...payload } = updatedVisit;
+    
     const { error } = await supabase
       .from('site_visits')
-      .update(updatedVisit)
-      .eq('id', updatedVisit.id);
+      .update(payload)
+      .eq('id', id);
 
     if (error) {
-      console.error('Error updating visit:', error);
+      console.error('Error updating visit:', error.message || error);
+      alert(`Update failed: ${error.message || 'Unknown error'}`);
     } else {
       setVisits(prev => prev.map(v => v.id === updatedVisit.id ? updatedVisit : v));
+      setSuccessMessage('Relevant activity is scheduled as per the records.');
     }
   };
 
   const handleAddClient = async (newClient: Client) => {
-    const { error } = await supabase.from('clients').upsert([newClient]);
+    // Strip interactions as it is a virtual property not present in DB schema
+    const { interactions, ...payload } = newClient;
+    
+    const { error } = await supabase.from('clients').upsert([payload]);
 
     if (error) {
-      console.error('Error saving client:', error);
-      alert('Error saving client. Please try again.');
+      console.error('Error saving client:', error.message || error);
+      alert(`Error saving client: ${error.message || 'Unknown error'}`);
     } else {
       setClients(prev => {
         const exists = prev.find(c => c.id === newClient.id);
@@ -106,18 +137,23 @@ const AppContent: React.FC = () => {
         return [newClient, ...prev];
       });
       setIsAddClientOpen(false);
+      setSuccessMessage('Client profile has been updated successfully.');
       navigate('/clients');
     }
   };
 
   const handleUpdateClient = async (updatedClient: Client) => {
+    // Strip interactions and id from update payload
+    const { id, interactions, ...payload } = updatedClient;
+
     const { error } = await supabase
       .from('clients')
-      .update(updatedClient)
-      .eq('id', updatedClient.id);
+      .update(payload)
+      .eq('id', id);
 
     if (error) {
-      console.error('Error updating client:', error);
+      console.error('Error updating client:', error.message || error);
+      alert(`Client update failed: ${error.message || 'Unknown error'}`);
     } else {
       setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
     }
@@ -127,8 +163,8 @@ const AppContent: React.FC = () => {
     const { error } = await supabase.from('properties').upsert([newProperty]);
 
     if (error) {
-      console.error('Error saving property:', error);
-      alert('Error saving property. Please try again.');
+      console.error('Error saving property:', error.message || error);
+      alert(`Error saving property: ${error.message || 'Unknown error'}`);
     } else {
       setProperties(prev => {
         const exists = prev.find(p => p.id === newProperty.id);
@@ -137,6 +173,7 @@ const AppContent: React.FC = () => {
       });
       setEditingProperty(null);
       setIsAddPropertyOpen(false);
+      setSuccessMessage('Property inventory has been updated.');
       navigate('/properties');
     }
   };
@@ -164,7 +201,7 @@ const AppContent: React.FC = () => {
       <main className={`flex-grow ${['/clients', '/visits', '/properties'].includes(location.pathname) ? 'pt-32' : 'pt-20'} pb-28 px-4 max-w-7xl mx-auto w-full`}>
         <Routes>
           <Route path="/" element={<Dashboard clients={clients} properties={properties} visits={visits} />} />
-          <Route path="/clients" element={<ClientsPage clients={clients} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleUpdateClient} onAddVisit={handleAddVisit} />} />
+          <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleUpdateClient} onAddVisit={handleAddVisit} />} />
           <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={() => setIsBookVisitOpen(true)} />} />
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} />} />
           <Route path="/profile" element={<ProfilePage />} />
@@ -195,6 +232,13 @@ const AppContent: React.FC = () => {
           properties={properties}
           onClose={() => setIsBookVisitOpen(false)}
           onSubmit={handleAddVisit}
+        />
+      )}
+
+      {successMessage && (
+        <SuccessPopup 
+          message={successMessage} 
+          onClose={() => setSuccessMessage(null)} 
         />
       )}
     </div>

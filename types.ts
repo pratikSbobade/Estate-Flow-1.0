@@ -12,6 +12,15 @@ export enum ClientType {
   PARTNER = 'Channel Partner'
 }
 
+export interface ClientInteraction {
+  id: string;
+  clientId: string;
+  type: 'Call' | 'WhatsApp' | 'Visit' | 'Email' | 'Note';
+  description: string;
+  timestamp: string;
+  relatedId?: string; // e.g. visitId
+}
+
 export interface Client {
   id: string;
   salutation: string;
@@ -42,6 +51,7 @@ export interface Client {
   agent: string;
   nurturingScore: number;
   createdAt: string;
+  interactions?: ClientInteraction[];
 }
 
 export interface SiteVisitHistory {

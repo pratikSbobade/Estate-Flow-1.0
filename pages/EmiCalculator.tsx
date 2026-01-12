@@ -17,6 +17,11 @@ const EmiCalculator: React.FC = () => {
   const totalPayment = emi * tenure * 12;
   const totalInterest = totalPayment - amount;
 
+  const shareEmi = () => {
+    const msg = `🏠 *Home Loan Estimate via Estate Flow*\n\nLoan Amount: ₹${amount.toLocaleString()}\nInterest Rate: ${rate}%\nTenure: ${tenure} Years\n\n*Monthly EMI: ₹${Math.round(emi).toLocaleString()}*\nTotal Interest: ₹${Math.round(totalInterest).toLocaleString()}\nTotal Payment: ₹${Math.round(totalPayment).toLocaleString()}\n\n_Generated via Estate Flow CRM_`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">EMI Calculator</h1>
@@ -105,7 +110,7 @@ const EmiCalculator: React.FC = () => {
           </div>
         </div>
 
-        <button className="w-full py-5 btn-3d btn-3d-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-none">
+        <button onClick={shareEmi} className="w-full py-5 btn-3d btn-3d-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-none">
           Send Quote via WhatsApp
         </button>
       </div>

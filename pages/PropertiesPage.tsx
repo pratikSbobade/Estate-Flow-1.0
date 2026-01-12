@@ -15,7 +15,6 @@ interface PropertiesPageProps {
 const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, searchQuery, onAddProperty, onEditProperty, onAddVisit }) => {
   const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
   const [filter, setFilter] = useState('All');
-  const [viewingProperty, setViewingProperty] = useState<Property | null>(null);
   const [sharingProperty, setSharingProperty] = useState<Property | null>(null);
   const [bookingProperty, setBookingProperty] = useState<Property | null>(null);
   const [isComparing, setIsComparing] = useState(false);
@@ -72,7 +71,7 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
             property={property} 
             isSelected={selectedProperties.includes(property.id)}
             onToggle={() => toggleSelect(property.id)}
-            onViewDetails={() => setViewingProperty(property)}
+            onEdit={() => onEditProperty(property)}
             onShare={() => setSharingProperty(property)}
             onBook={() => setBookingProperty(property)}
           />
@@ -103,14 +102,6 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
             </div>
           </div>
         </div>
-      )}
-
-      {viewingProperty && (
-        <PropertyDetailsDrawer 
-          property={viewingProperty} 
-          onClose={() => setViewingProperty(null)} 
-          onEdit={() => { onEditProperty(viewingProperty); setViewingProperty(null); }}
-        />
       )}
 
       {sharingProperty && (
@@ -144,29 +135,28 @@ const PropertyCard: React.FC<{
   property: Property, 
   isSelected: boolean, 
   onToggle: () => void, 
-  onViewDetails: () => void,
+  onEdit: () => void, 
   onShare: () => void,
   onBook: () => void
-}> = ({ property, isSelected, onToggle, onViewDetails, onShare, onBook }) => {
+}> = ({ property, isSelected, onToggle, onEdit, onShare, onBook }) => {
   const mainPhoto = property.media?.photos?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=400';
 
   return (
     <div 
       className={`group relative rounded-[2rem] bg-white p-3 shadow-sm transition-all border ${isSelected ? 'ring-2 ring-indigo-600 border-transparent' : 'border-transparent hover:border-indigo-100 hover:shadow-xl'}`}
     >
-      <div className="absolute top-4 right-4 z-10">
-        <label className="relative flex items-center justify-center p-1 rounded-full bg-white shadow-md cursor-pointer group/cb">
-          <input 
-            type="checkbox" 
-            checked={isSelected}
-            onChange={onToggle}
-            className="peer h-6 w-6 cursor-pointer appearance-none rounded-lg border-2 border-slate-200 bg-white checked:border-indigo-600 checked:bg-indigo-600 transition-all"
-          />
-          <i className="fas fa-check absolute text-white opacity-0 peer-checked:opacity-100 text-xs pointer-events-none"></i>
-        </label>
+      <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+        <button 
+          onClick={(e) => { e.stopPropagation(); onToggle(); }}
+          className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}
+          title="Add to Comparison"
+        >
+          <i className={`fas ${isSelected ? 'fa-check' : 'fa-columns'} text-xs`}></i>
+        </button>
       </div>
 
-      <div onClick={onViewDetails} className="cursor-pointer">
+      {/* Main Clickable Area for Direct Editing */}
+      <div onClick={onEdit} className="cursor-pointer">
         <div className="flex gap-4 mb-4">
           <div 
             className="w-24 h-24 shrink-0 rounded-2xl bg-cover bg-center bg-slate-100 relative overflow-hidden" 
@@ -176,6 +166,9 @@ const PropertyCard: React.FC<{
                <span className="bg-white/95 backdrop-blur px-1.5 py-0.5 rounded text-[8px] font-black text-slate-800 uppercase shadow-sm">
                  {property.type}
                </span>
+            </div>
+            <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/20 transition-colors flex items-center justify-center">
+               <i className="fas fa-edit text-white opacity-0 group-hover:opacity-100 transition-opacity"></i>
             </div>
           </div>
           <div className="flex flex-col flex-1 min-w-0">
@@ -409,310 +402,6 @@ const ComparisonRow: React.FC<{ label: string, values: string[] }> = ({ label, v
       </td>
     ))}
   </tr>
-);
-
-const PropertyDetailsDrawer: React.FC<{ property: Property, onClose: () => void, onEdit: () => void }> = ({ property, onClose, onEdit }) => {
-  const photos = property.media?.photos || [];
-  const mainPhoto = photos[0] || 'https://via.placeholder.com/800x450';
-
-  return (
-    <div className="fixed inset-0 z-[160] flex items-end sm:items-stretch sm:justify-end">
-      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-      <div className="relative bg-white w-full sm:max-w-2xl h-[92vh] sm:h-full shadow-2xl overflow-y-auto animate-slide-up sm:animate-none sm:translate-x-0 flex flex-col hide-scrollbar">
-        {/* Sticky Header */}
-        <div className="sticky top-0 bg-white/80 backdrop-blur-md z-20 px-8 py-6 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{property.type} • #{property.id}</span>
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-none mt-1 uppercase">{property.title}</h2>
-          </div>
-          <button onClick={onClose} className="w-12 h-12 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center transition-colors">
-            <i className="fas fa-times text-slate-500"></i>
-          </button>
-        </div>
-
-        <div className="p-8 space-y-12 pb-32">
-          {/* Visuals Section */}
-          <div className="space-y-4">
-            <div 
-              className="aspect-video bg-slate-100 rounded-[2.5rem] bg-cover bg-center shadow-inner border border-slate-100" 
-              style={{ backgroundImage: `url("${mainPhoto}")` }}
-            ></div>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-              {photos.slice(1).map((p, idx) => (
-                <div key={idx} className="w-24 h-24 shrink-0 bg-slate-100 rounded-2xl bg-cover bg-center border border-slate-100" style={{ backgroundImage: `url("${p}")` }}></div>
-              ))}
-            </div>
-          </div>
-
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <DetailStat label="Type" value={property.type} icon="fa-building" />
-            <DetailStat label="Listing" value={property.listingType} icon="fa-tag" color="text-indigo-600" />
-            <DetailStat label="Possession" value={property.possessionDate || 'N/A'} icon="fa-calendar-alt" />
-            <DetailStat label="Total Units" value={property.totalUnits.toString()} icon="fa-layer-group" />
-          </div>
-
-          {/* Basic & About Section */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> About Property
-            </h3>
-            <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
-              <p className="text-sm text-slate-600 leading-relaxed font-medium">{property.description}</p>
-            </div>
-          </section>
-
-          {/* Location Details */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> Location & Connectivity
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InfoBox label="Full Address" value={`${property.location.area}, ${property.location.city}, ${property.location.state}`} icon="fa-map-pin" />
-              <InfoBox label="Landmark" value={property.location.landmark} icon="fa-landmark" />
-            </div>
-            <a 
-              href={property.location.mapLink} 
-              target="_blank" 
-              className="w-full py-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center gap-2 text-indigo-600 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all"
-            >
-              <i className="fas fa-external-link-alt"></i> View on Google Maps
-            </a>
-          </section>
-
-          {/* Project Specifications */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> Project Specifications
-            </h3>
-            <div className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
-              <div className="p-5 border-b border-slate-50 flex justify-between bg-slate-50/50">
-                <span className="text-[10px] font-black text-slate-400 uppercase">RERA Completion</span>
-                <span className="text-xs font-black text-slate-700">{property.reraCompletionDate || 'N/A'}</span>
-              </div>
-              <div className="p-6 space-y-4">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tower Wise Status</p>
-                {property.towers.map((t, idx) => (
-                  <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-                    <span className="text-sm font-black text-slate-800 uppercase tracking-tight">{t.name}</span>
-                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{t.possession}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Configurations Section */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> Available Configurations
-            </h3>
-            <div className="space-y-3">
-              {property.configurations.map((c, idx) => (
-                <div key={idx} className="bg-white border border-slate-100 p-6 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm hover:border-indigo-100 transition-colors">
-                  <div className="flex items-center gap-4 w-full sm:w-auto">
-                    <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
-                      <i className="fas fa-vector-square"></i>
-                    </div>
-                    <div>
-                      <p className="text-base font-black text-slate-800 uppercase tracking-tight">{c.bhk}</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{c.carpetArea} {c.unit} Carpet • {c.bathrooms} Bath • {c.balconies} Balcony</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-4 sm:pt-0">
-                    <div className="text-right">
-                      <p className="text-[9px] font-black text-slate-400 uppercase">Per Sq {c.unit}</p>
-                      <p className="text-xs font-black text-slate-600">₹{c.pricePerSqUnit}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[9px] font-black text-slate-400 uppercase">Unit Cost</p>
-                      <p className="text-lg font-black text-indigo-600">₹{(c.costing/100000).toFixed(1)}L</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Financials Section */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> Financial Terms
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FinancialItem label="Booking Amount" value={`₹${(property.financials.bookingAmount/1000).toFixed(0)}K`} />
-              <FinancialItem label="Maintenance" value={`₹${property.financials.maintenanceAmount} / ${property.financials.maintenanceFrequency}`} />
-              <FinancialItem label="All Inclusive" value={property.financials.allInclusive ? '✅ YES' : '❌ NO'} />
-              <FinancialItem label="Negotiable" value={property.financials.negotiable ? '✅ YES' : '❌ NO'} />
-              {property.financials.expectedRent && <FinancialItem label="Expected Rent" value={`₹${property.financials.expectedRent.toLocaleString()}`} />}
-            </div>
-          </section>
-
-          {/* Legal & Ownership */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> Legal & Compliance
-            </h3>
-            <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] space-y-6">
-              <div className="grid grid-cols-2 gap-8 border-b border-white/10 pb-6">
-                <div>
-                  <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1">RERA ID</p>
-                  <p className="text-base font-black tracking-tight">{property.legal.reraId}</p>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1">Ownership</p>
-                  <p className="text-base font-black tracking-tight">{property.legal.ownershipType}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-3">Owner Details</p>
-                {property.legal.owners.map((o, idx) => (
-                  <div key={idx} className="flex flex-col gap-0.5 mb-2">
-                    <p className="text-sm font-black">{o.name}</p>
-                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{o.company}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 bg-white/5 p-3 rounded-xl border border-white/10">
-                <i className="fas fa-shield-check text-emerald-400"></i>
-                <span className="text-[10px] font-black uppercase tracking-widest">Status: {property.legal.occupancyStatus}</span>
-              </div>
-            </div>
-          </section>
-
-          {/* Amenities & Features */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> Amenities & Lifestyle
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {property.amenities.map(a => (
-                <span key={a} className="px-4 py-2 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest">{a}</span>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-              <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                <p className="text-[9px] font-black text-slate-400 uppercase mb-3">Furnishing Status</p>
-                <div className="flex items-center gap-3">
-                  <i className="fas fa-couch text-indigo-600"></i>
-                  <span className="text-sm font-black text-slate-800 uppercase">{property.furnishing.status}</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {property.furnishing.interiors.map(i => (
-                    <span key={i} className="px-2 py-0.5 bg-white border border-slate-100 rounded-lg text-[8px] font-bold text-slate-500 uppercase">{i}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                <p className="text-[9px] font-black text-slate-400 uppercase mb-3">Views</p>
-                <div className="flex flex-wrap gap-2">
-                  {property.views.map(v => (
-                    <span key={v} className="flex items-center gap-1.5 text-xs font-black text-slate-700">
-                      <i className="fas fa-eye text-emerald-500 text-[10px]"></i> {v}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Media Links */}
-          <section className="space-y-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-6 h-[1px] bg-slate-200"></span> Documents & Virtual Tour
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <MediaButton label="Virtual Tour" icon="fa-video" url={property.media?.videoUrl || ''} color="text-red-500" />
-              <MediaButton label="Floor Plan" icon="fa-draw-polygon" url={property.media?.floorPlanUrl || ''} color="text-indigo-500" />
-              {property.media?.documents?.map((d, i) => (
-                <MediaButton key={i} label={d.name} icon="fa-file-pdf" url={d.url} color="text-slate-600" />
-              ))}
-            </div>
-          </section>
-
-          {/* RM & Source */}
-          <section className="p-8 bg-indigo-600 rounded-[2.5rem] text-white">
-            <div className="flex justify-between items-start mb-6">
-              <h3 className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">Dedicated Relationship Manager</h3>
-              <span className="px-3 py-1 bg-white/20 rounded-full text-[9px] font-black uppercase tracking-tighter">TAT: {property.source.tat}</span>
-            </div>
-            <div className="flex items-center gap-5">
-              <div className="w-16 h-16 bg-white/10 rounded-[1.5rem] flex items-center justify-center text-3xl font-black border border-white/20">
-                {property.source.dedicatedRM[0] || '?'}
-              </div>
-              <div>
-                <p className="text-xl font-black tracking-tight">{property.source.dedicatedRM}</p>
-                <p className="text-sm font-bold text-white/60 mb-3">{property.source.rmContact}</p>
-                <div className="flex gap-2">
-                  <button className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-[9px] font-black uppercase shadow-lg shadow-indigo-900/40">Call RM</button>
-                  <button className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase shadow-lg shadow-emerald-900/40">WhatsApp</button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* Action Bar */}
-        <div className="absolute bottom-0 left-0 right-0 p-8 bg-white/80 backdrop-blur-md border-t border-slate-100 flex gap-4 z-30">
-          <button 
-            onClick={onEdit} 
-            className="flex-1 py-5 btn-3d btn-3d-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2"
-          >
-            <i className="fas fa-edit"></i> Edit Details
-          </button>
-          <button 
-            onClick={() => { onClose(); }} // Add functional redirection if needed
-            className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-200"
-          >
-            Create Quote
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const DetailStat: React.FC<{ label: string, value: string, icon: string, color?: string }> = ({ label, value, icon, color }) => (
-  <div className="p-4 bg-slate-50 rounded-[1.5rem] border border-slate-100 text-center flex flex-col items-center">
-    <i className={`fas ${icon} text-base mb-2 ${color || 'text-slate-400'}`}></i>
-    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">{label}</p>
-    <p className="text-[11px] font-black text-slate-800 leading-none truncate w-full uppercase">{value}</p>
-  </div>
-);
-
-const InfoBox: React.FC<{ label: string, value: string, icon: string }> = ({ label, value, icon }) => (
-  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-4">
-    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
-      <i className={`fas ${icon} text-indigo-500`}></i>
-    </div>
-    <div className="min-w-0">
-      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-      <p className="text-xs font-black text-slate-800 leading-tight uppercase">{value}</p>
-    </div>
-  </div>
-);
-
-const FinancialItem: React.FC<{ label: string, value: string }> = ({ label, value }) => (
-  <div className="px-5 py-4 bg-white border border-slate-100 rounded-2xl flex justify-between items-center shadow-sm">
-    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
-    <span className="text-xs font-black text-slate-700">{value}</span>
-  </div>
-);
-
-const MediaButton: React.FC<{ label: string, icon: string, url: string, color: string }> = ({ label, icon, url, color }) => (
-  <button 
-    disabled={!url}
-    onClick={() => url && window.open(url, '_blank')}
-    className={`p-4 bg-white border border-slate-100 rounded-2xl flex items-center gap-3 transition-all ${url ? 'hover:shadow-md hover:border-indigo-100 active:scale-95' : 'opacity-40 cursor-not-allowed'}`}
-  >
-    <div className={`w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center ${color}`}>
-      <i className={`fas ${icon} text-sm`}></i>
-    </div>
-    <div className="text-left">
-      <p className="text-[10px] font-black uppercase tracking-widest leading-none text-slate-800">{label}</p>
-      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-1">{url ? 'Available' : 'No Link'}</p>
-    </div>
-  </button>
 );
 
 export default PropertiesPage;

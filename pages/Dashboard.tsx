@@ -2,9 +2,9 @@
 import React from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, AreaChart, Area 
+  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Client, Property, SiteVisit } from '../types';
+import { Client, Property, SiteVisit, ClientInteraction } from '../types';
 
 interface DashboardProps {
   clients: Client[];
@@ -15,8 +15,24 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) => {
   const todayDateStr = new Date().toISOString().split('T')[0];
   const visitsToday = visits.filter(v => v.scheduledAt.startsWith(todayDateStr)).length;
-  const completedVisits = visits.filter(v => v.status === 'Completed').length;
   
+  // Aggregate all call interactions from all clients
+  const allInteractions: ClientInteraction[] = clients.reduce((acc, client) => {
+    return [...acc, ...(client.interactions || [])];
+  }, [] as ClientInteraction[]);
+
+  const callInteractions = allInteractions.filter(i => i.type === 'Call');
+  
+  // Status breakdown for Pie Chart
+  const statusCounts = callInteractions.reduce((acc, curr) => {
+    const status = curr.description.split(': ')[1]?.split(' - ')[0] || 'Unknown';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const pieData = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
+  const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#64748b'];
+
   const totalRevenue = properties
     .filter(p => p.status === 'Sold')
     .reduce((sum, p) => sum + (p.financials.priceMin || 0), 0);
@@ -30,10 +46,10 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
       color: 'indigo' 
     },
     { 
-      label: 'Active Listings', 
-      value: properties.filter(p => p.status === 'Available').length.toString(), 
-      sub: `${Math.round((properties.filter(p => p.status === 'Available').length / (properties.length || 1)) * 100)}% Available`, 
-      icon: 'fa-check-circle', 
+      label: 'Call Productivity', 
+      value: callInteractions.length.toString(), 
+      sub: `Total calls logged`, 
+      icon: 'fa-phone-volume', 
       color: 'emerald' 
     },
     { 
@@ -46,7 +62,7 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
     { 
       label: 'Visits Today', 
       value: visitsToday.toString().padStart(2, '0'), 
-      sub: `${completedVisits} total completed`, 
+      sub: `${visits.filter(v => v.status === 'Completed').length} total completed`, 
       icon: 'fa-calendar-day', 
       color: 'purple' 
     },
@@ -61,17 +77,6 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
     { name: 'Sat', visits: 15, conversion: 8 },
     { name: 'Sun', visits: 10, conversion: 5 },
   ];
-
-  const reminders = visits
-    .filter(v => v.status === 'Scheduled')
-    .slice(0, 3)
-    .map(v => ({
-      type: 'Site Visit',
-      client: v.clientName,
-      time: new Date(v.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      property: v.propertyName,
-      urgent: v.scheduledAt.startsWith(todayDateStr)
-    }));
 
   return (
     <div className="space-y-10">
@@ -117,10 +122,6 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
               <h2 className="text-xl font-black text-slate-800 tracking-tight">Visit Activity</h2>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Scheduled vs. Completed</p>
             </div>
-            <div className="flex bg-slate-100 p-1.5 rounded-xl gap-1">
-              <button className="px-6 py-2 btn-3d btn-3d-indigo text-white shadow-none rounded-lg text-xs font-black">Weekly</button>
-              <button className="px-6 py-2 btn-3d btn-3d-white shadow-none rounded-lg text-xs font-black">Monthly</button>
-            </div>
           </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -144,46 +145,127 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, properties, visits }) =>
           </div>
         </div>
 
-        {/* Reminders Sidebar */}
-        <div className="card-neo p-8 rounded-[2.5rem] bg-slate-900 text-white">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-xl font-black tracking-tight">Upcoming Visits</h2>
-            <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
-              <i className="fas fa-bell animate-swing"></i>
-            </div>
+        {/* Call Log Maintenance Pie Chart */}
+        <div className="card-neo p-8 rounded-[2.5rem] bg-white border border-slate-100">
+          <div className="mb-6">
+            <h2 className="text-xl font-black text-slate-800 tracking-tight">Call Disposition</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Outcome Distribution</p>
           </div>
-          <div className="space-y-5">
-            {reminders.map((rem, idx) => (
-              <div key={idx} className={`p-5 rounded-[1.5rem] border-l-4 transition-transform hover:scale-[1.02] cursor-pointer ${
-                rem.urgent ? 'bg-red-500/10 border-red-500' : 'bg-white/5 border-indigo-400'
-              }`}>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${rem.urgent ? 'bg-red-500 text-white' : 'bg-indigo-500 text-white'}`}>
-                      {rem.type}
-                    </span>
-                    <h4 className="font-black text-white text-lg mt-2">{rem.client}</h4>
-                  </div>
-                  <span className="text-xs font-black text-white/50">{rem.time}</span>
-                </div>
-                <p className="text-xs font-bold text-white/40 mt-1 flex items-center gap-2">
-                  <i className="fas fa-location-arrow text-[10px]"></i>
-                  {rem.property}
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
+             <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase">Total Logged</p>
+                <p className="text-xl font-black text-indigo-600">{callInteractions.length}</p>
+             </div>
+             <div className="text-right">
+                <p className="text-[9px] font-black text-slate-400 uppercase">Conversion</p>
+                <p className="text-xl font-black text-emerald-500">
+                   {callInteractions.length > 0 ? Math.round((statusCounts['Contacted'] || 0) / callInteractions.length * 100) : 0}%
                 </p>
-                {rem.urgent && (
-                  <button className="mt-4 w-full py-4 btn-3d btn-3d-red text-white text-xs font-black uppercase rounded-2xl active:translate-y-1 transition-all">
-                    Urgent Call
-                  </button>
-                )}
-              </div>
-            ))}
-            {reminders.length === 0 && (
-              <div className="text-center py-10">
-                <p className="text-white/30 text-xs font-bold uppercase tracking-widest">No scheduled visits</p>
-              </div>
-            )}
+             </div>
           </div>
         </div>
+      </div>
+
+      {/* Call Log Maintenance Window */}
+      <div className="card-neo rounded-[2.5rem] overflow-hidden bg-white border border-slate-100">
+        <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div>
+            <h2 className="text-xl font-black text-slate-800 tracking-tight uppercase">Call Log Maintenance</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Real-time interaction audit</p>
+          </div>
+          <div className="flex gap-2">
+            <button className="px-4 py-2 bg-white border border-slate-100 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">Export Logs</button>
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+              <i className="fas fa-headset"></i>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Duration/Outcome</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Summary Note</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {callInteractions.slice(0, 8).map((log) => {
+                const client = clients.find(c => c.id === log.clientId);
+                return (
+                  <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-black text-[10px]">
+                          {client ? client.firstName[0] + client.lastName[0] : '??'}
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 uppercase leading-tight">{client ? `${client.firstName} ${client.lastName}` : 'Unknown Client'}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase">{log.clientId}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-4">
+                      <p className="text-[10px] font-bold text-slate-600">{new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    </td>
+                    <td className="px-8 py-4">
+                      <span className="text-[10px] font-black text-indigo-600 uppercase bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+                        {log.description.split(': ')[1]?.split(' - ')[0] || 'Unknown'}
+                      </span>
+                    </td>
+                    <td className="px-8 py-4">
+                      <p className="text-[10px] font-medium text-slate-500 italic max-w-xs truncate">
+                        {log.description.split(' - ')[1] || 'No summary notes provided.'}
+                      </p>
+                    </td>
+                    <td className="px-8 py-4 text-right">
+                       <button className="text-indigo-600 hover:text-indigo-800 transition-colors p-2">
+                          <i className="fas fa-chevron-right text-xs"></i>
+                       </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {callInteractions.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center">
+                    <i className="fas fa-phone-slash text-4xl text-slate-200 mb-4"></i>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">No call logs recorded yet</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {callInteractions.length > 8 && (
+           <div className="p-6 text-center border-t border-slate-50">
+              <button className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">View All {callInteractions.length} Logs</button>
+           </div>
+        )}
       </div>
     </div>
   );

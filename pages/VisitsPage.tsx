@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { SiteVisit, ClientStatus } from '../types';
 
 interface VisitsPageProps {
@@ -7,13 +8,23 @@ interface VisitsPageProps {
   searchQuery: string;
   onUpdateVisit: (updatedVisit: SiteVisit) => void;
   onAddVisit: () => void;
+  onBookAtDate?: (date: string) => void;
 }
 
-const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVisit, onAddVisit }) => {
+const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVisit, onAddVisit, onBookAtDate }) => {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [activeModal, setActiveModal] = useState<{visit: SiteVisit, type: 'feedback' | 'reschedule' | 'cancel' | 'details'} | null>(null);
   const [dayAgenda, setDayAgenda] = useState<{ date: string, visits: SiteVisit[] } | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [highlightedVisitId, setHighlightedVisitId] = useState<string | null>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    const state = location.state as { highlightVisitId?: string };
+    if (state?.highlightVisitId) {
+      navigateToListVisit(state.highlightVisitId);
+    }
+  }, [location.state]);
 
   const filteredVisits = visits.filter(v => 
     v.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -23,18 +34,39 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
   const handleUpdateVisit = (visitId: string, updates: Partial<SiteVisit>) => {
     const visit = visits.find(v => v.id === visitId);
     if (visit) {
+      // Destructure 'reason' out so it is not sent to Supabase as a column
+      const { reason, ...cleanUpdates } = updates as any;
+      
       const historyUpdate = {
-        status: updates.status || visit.status,
+        status: cleanUpdates.status || visit.status,
         date: new Date().toISOString(),
-        note: (updates as any).reason || 'Status updated'
+        note: reason || (cleanUpdates.status === 'Completed' ? 'Feedback submitted and visit closed' : 'Status updated via Visit Management')
       };
+
       onUpdateVisit({ 
         ...visit, 
-        ...updates,
+        ...cleanUpdates,
         history: [...(visit.history || []), historyUpdate]
       });
     }
     setActiveModal(null);
+  };
+
+  const navigateToListVisit = (visitId: string) => {
+    setViewMode('list');
+    setDayAgenda(null);
+    setHighlightedVisitId(visitId);
+    
+    // Smooth scroll to the element after view switch
+    setTimeout(() => {
+      const element = document.getElementById(`visit-card-${visitId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+
+    // Remove highlight after a few seconds
+    setTimeout(() => setHighlightedVisitId(null), 3000);
   };
 
   // Calendar Logic
@@ -99,8 +131,11 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
               return (
                 <div 
                   key={i} 
-                  onClick={() => day && dayVisits.length > 0 && setDayAgenda({ date: dateStr, visits: dayVisits })}
-                  className={`aspect-square rounded-2xl relative border cursor-pointer transition-all ${day ? 'border-slate-50 bg-white hover:border-indigo-200 hover:shadow-sm' : 'border-transparent bg-transparent'}`}
+                  onClick={() => {
+                    if (!day) return;
+                    setDayAgenda({ date: dateStr, visits: dayVisits });
+                  }}
+                  className={`aspect-square rounded-2xl relative border cursor-pointer transition-all ${day ? (isToday ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-50 bg-white hover:border-indigo-200 hover:shadow-sm') : 'border-transparent bg-transparent'}`}
                 >
                   {day && (
                     <>
@@ -109,13 +144,19 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
                         {dayVisits.slice(0, 2).map(v => (
                           <div 
                             key={v.id}
-                            className={`w-full py-0.5 rounded-md text-[6px] font-black truncate px-1 text-white shadow-sm text-center ${v.status === 'Completed' ? 'bg-emerald-500' : v.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'}`}
+                            onClick={(e) => { e.stopPropagation(); navigateToListVisit(v.id); }}
+                            className={`w-full py-0.5 rounded-md text-[6px] font-black truncate px-1 text-white shadow-sm text-center transition-transform hover:scale-105 ${v.status === 'Completed' ? 'bg-emerald-500' : v.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'}`}
                           >
                             {v.clientName.split(' ')[0]}
                           </div>
                         ))}
                         {dayVisits.length > 2 && <span className="text-[7px] font-black text-slate-300">+{dayVisits.length - 2} more</span>}
                       </div>
+                      {dayVisits.length === 0 && (
+                         <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                            <i className="fas fa-plus-circle text-indigo-300 text-xs"></i>
+                         </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -126,7 +167,13 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
       ) : (
         <div className="space-y-4">
           {filteredVisits.map(visit => (
-            <VisitCard key={visit.id} visit={visit} onAction={(type) => setActiveModal({ visit, type })} />
+            <VisitCard 
+              key={visit.id} 
+              visit={visit} 
+              isHighlighted={highlightedVisitId === visit.id}
+              onAction={(type) => setActiveModal({ visit, type })} 
+              onNextAction={() => alert(`Initiating Next Action: ${visit.feedback?.nextAction}`)} 
+            />
           ))}
           {filteredVisits.length === 0 && (
             <div className="py-20 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
@@ -150,12 +197,12 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
                 <i className="fas fa-times"></i>
               </button>
             </div>
-            <div className="overflow-y-auto space-y-4 pr-2 hide-scrollbar">
+            <div className="overflow-y-auto space-y-4 pr-2 hide-scrollbar flex-1">
               {dayAgenda.visits.map(v => (
                 <div 
                   key={v.id} 
-                  onClick={() => { setDayAgenda(null); setActiveModal({ visit: v, type: 'details' }); }}
-                  className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 cursor-pointer transition-colors"
+                  onClick={() => navigateToListVisit(v.id)}
+                  className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-all group relative cursor-pointer active:scale-95"
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-[10px] font-black text-indigo-600 uppercase leading-none">
@@ -169,8 +216,30 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
                   </div>
                   <h4 className="font-black text-slate-800 text-sm uppercase leading-tight">{v.clientName}</h4>
                   <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-1">{v.propertyName}</p>
+                  
+                  <div className="mt-3 flex gap-2">
+                    <span className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[8px] font-black uppercase tracking-widest group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      View in List
+                    </span>
+                  </div>
                 </div>
               ))}
+              {dayAgenda.visits.length === 0 && (
+                <div className="text-center py-10">
+                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">No visits scheduled</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-6">
+                <button 
+                  onClick={() => {
+                    setDayAgenda(null);
+                    onAddVisit();
+                  }}
+                  className="w-full py-4 btn-3d btn-3d-indigo text-white text-[10px] font-black uppercase tracking-widest rounded-2xl"
+                >
+                  Schedule New Visit
+                </button>
             </div>
           </div>
         </div>
@@ -193,7 +262,7 @@ const VisitsPage: React.FC<VisitsPageProps> = ({ visits, searchQuery, onUpdateVi
   );
 };
 
-const VisitCard: React.FC<{ visit: SiteVisit, onAction: (type: any) => void }> = ({ visit, onAction }) => {
+const VisitCard: React.FC<{ visit: SiteVisit, isHighlighted?: boolean, onAction: (type: any) => void, onNextAction: () => void }> = ({ visit, isHighlighted, onAction, onNextAction }) => {
   const [showHistory, setShowHistory] = useState(false);
   const date = new Date(visit.scheduledAt);
   const statusColors = {
@@ -203,13 +272,18 @@ const VisitCard: React.FC<{ visit: SiteVisit, onAction: (type: any) => void }> =
     Rescheduled: 'bg-amber-50 text-amber-600 border-amber-100'
   };
 
+  const isCompleted = visit.status === 'Completed';
+
   return (
-    <div className="card-neo rounded-[2.5rem] overflow-hidden border border-slate-100 hover:shadow-xl transition-all">
+    <div 
+      id={`visit-card-${visit.id}`}
+      className={`card-neo rounded-[2.5rem] overflow-hidden border transition-all duration-500 ${isHighlighted ? 'ring-4 ring-indigo-500/30 scale-[1.02] border-indigo-400 shadow-2xl' : ''} ${isCompleted ? 'border-emerald-100 bg-emerald-50/10 shadow-none' : 'border-slate-100 hover:shadow-xl'}`}
+    >
       <div className="p-6">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <div className="flex gap-4">
-            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex flex-col items-center justify-center shrink-0 border border-slate-100">
-              <span className="text-[10px] font-black text-indigo-600 uppercase leading-none mb-1">{date.toLocaleString('default', { month: 'short' })}</span>
+            <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center shrink-0 border transition-colors ${isCompleted ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
+              <span className={`text-[10px] font-black uppercase leading-none mb-1 ${isCompleted ? 'text-emerald-600' : 'text-indigo-600'}`}>{date.toLocaleString('default', { month: 'short' })}</span>
               <span className="text-2xl font-black text-slate-800 leading-none">{date.getDate()}</span>
             </div>
             <div className="min-w-0">
@@ -220,7 +294,7 @@ const VisitCard: React.FC<{ visit: SiteVisit, onAction: (type: any) => void }> =
                 </span>
               </div>
               <p className="text-xs font-bold text-slate-500 flex items-center gap-2">
-                <i className="fas fa-building text-indigo-400"></i> {visit.propertyName}
+                <i className={`fas fa-building ${isCompleted ? 'text-emerald-400' : 'text-indigo-400'}`}></i> {visit.propertyName}
               </p>
               <div className="flex items-center gap-4 mt-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -228,43 +302,133 @@ const VisitCard: React.FC<{ visit: SiteVisit, onAction: (type: any) => void }> =
                 </p>
                 <button 
                   onClick={() => setShowHistory(!showHistory)}
-                  className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
+                  className={`text-[9px] font-black uppercase tracking-widest hover:underline ${isCompleted ? 'text-emerald-600' : 'text-indigo-600'}`}
                 >
-                  {showHistory ? 'Hide History' : 'View History'}
+                  {showHistory ? 'Hide Details' : 'View Full Context'}
                 </button>
               </div>
             </div>
           </div>
           
           <div className="flex items-center gap-2 sm:self-start">
-            <button onClick={() => onAction('reschedule')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-white rounded-xl text-[9px] font-black uppercase tracking-widest">Reschedule</button>
-            <button onClick={() => onAction('cancel')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-red text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-red-100">Cancel</button>
-            <button onClick={() => onAction('feedback')} className="flex-1 sm:flex-none px-6 py-2.5 btn-3d btn-3d-indigo text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-indigo-100">Feedback</button>
+            {!isCompleted ? (
+              <>
+                <button onClick={() => onAction('reschedule')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-white rounded-xl text-[9px] font-black uppercase tracking-widest">Reschedule</button>
+                <button onClick={() => onAction('cancel')} className="flex-1 sm:flex-none px-4 py-2.5 btn-3d btn-3d-red text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-red-100">Cancel</button>
+                <button onClick={() => onAction('feedback')} className="flex-1 sm:flex-none px-6 py-2.5 btn-3d btn-3d-indigo text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-indigo-100">Feedback</button>
+              </>
+            ) : (
+              <button 
+                onClick={onNextAction}
+                className="flex-1 sm:flex-none px-6 py-4 btn-3d btn-3d-emerald text-white rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-100 flex items-center gap-2"
+              >
+                <i className="fas fa-arrow-right"></i>
+                Perform Next Action: {visit.feedback?.nextAction || 'Follow Up'}
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Inline Feedback Preview when Completed */}
+        {isCompleted && visit.feedback && !showHistory && (
+          <div className="mt-4 p-4 bg-white/60 border border-emerald-100 rounded-2xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex text-amber-400 text-[10px]">
+                {Array.from({length: 5}).map((_, i) => (
+                  <i key={i} className={`fas fa-star ${i < (visit.feedback?.rating || 0) ? 'text-amber-400' : 'text-slate-200'}`}></i>
+                ))}
+              </div>
+              <p className="text-[10px] font-bold text-slate-600 italic line-clamp-1">"{visit.feedback.notes}"</p>
+            </div>
+            <div className="flex gap-2">
+               <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">Hot Lead</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {showHistory && (
-        <div className="px-6 pb-6 bg-slate-50/50 border-t border-slate-50 animate-slide-up pt-4">
-          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Visit Timeline</h4>
-          <div className="space-y-4">
-            {(visit.history || [{ status: 'Scheduled', date: visit.scheduledAt, note: 'Initial Appointment' }]).map((h, i) => (
-              <div key={i} className="flex gap-4">
-                <div className="flex flex-col items-center">
-                  <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm mt-1 shrink-0 ${
-                    h.status === 'Completed' ? 'bg-emerald-500' : h.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'
-                  }`}></div>
-                  {i < (visit.history?.length || 0) && <div className="w-[1px] flex-grow bg-slate-200 my-1"></div>}
-                </div>
-                <div className="min-w-0 pb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black text-slate-700 uppercase">{h.status}</span>
-                    <span className="text-[8px] font-bold text-slate-400">{new Date(h.date).toLocaleDateString()}</span>
+        <div className="px-6 pb-6 bg-slate-50/50 border-t border-slate-50 animate-slide-up pt-6 space-y-6">
+          {/* Feedback Details Section */}
+          {visit.feedback && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Visit Feedback</h4>
+                  <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex text-amber-400 text-xs">
+                        {Array.from({length: 5}).map((_, i) => (
+                          <i key={i} className={`fas fa-star ${i < (visit.feedback?.rating || 0) ? 'text-amber-400' : 'text-slate-200'}`}></i>
+                        ))}
+                      </div>
+                      <span className="text-[10px] font-black text-slate-400">({visit.feedback.rating}/5)</span>
+                    </div>
+                    <p className="text-xs font-medium text-slate-700 leading-relaxed italic">"{visit.feedback.notes}"</p>
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                      <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-100">
+                        <p className="text-[8px] font-black text-emerald-600 uppercase mb-1">What they liked</p>
+                        <p className="text-[10px] font-bold text-slate-600">{visit.feedback.likes || 'N/A'}</p>
+                      </div>
+                      <div className="p-2 bg-red-50 rounded-xl border border-red-100">
+                        <p className="text-[8px] font-black text-red-600 uppercase mb-1">Their concerns</p>
+                        <p className="text-[10px] font-bold text-slate-600">{visit.feedback.dislikes || 'N/A'}</p>
+                      </div>
+                    </div>
                   </div>
-                  {h.note && <p className="text-[10px] text-slate-500 font-medium italic mt-0.5 line-clamp-1">{h.note}</p>}
                 </div>
               </div>
-            ))}
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Next Steps</h4>
+                  <div className="bg-indigo-600 p-4 rounded-2xl shadow-lg shadow-indigo-100 text-white">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Proposed Action</p>
+                        <p className="text-sm font-black uppercase">{visit.feedback.nextAction}</p>
+                      </div>
+                      <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center">
+                        <i className="fas fa-arrow-trend-up"></i>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center">
+                      <div>
+                        <p className="text-[8px] font-black text-indigo-200 uppercase">Follow-up Date</p>
+                        <p className="text-[10px] font-bold">{visit.feedback.nextFollowUp ? new Date(visit.feedback.nextFollowUp).toLocaleDateString([], { dateStyle: 'medium' }) : 'TBD'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[8px] font-black text-indigo-200 uppercase">Probability</p>
+                        <p className="text-[10px] font-bold">{visit.feedback.probability}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Visit Timeline Section */}
+          <div>
+            <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Visit Timeline</h4>
+            <div className="space-y-4">
+              {(visit.history || [{ status: 'Scheduled', date: visit.scheduledAt, note: 'Initial Appointment' }]).map((h, i) => (
+                <div key={i} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm mt-1 shrink-0 ${
+                      h.status === 'Completed' ? 'bg-emerald-500' : h.status === 'Cancelled' ? 'bg-red-400' : 'bg-indigo-600'
+                    }`}></div>
+                    {i < (visit.history?.length || 1) - 1 && <div className="w-[1px] flex-grow bg-slate-200 my-1"></div>}
+                  </div>
+                  <div className="min-w-0 pb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-700 uppercase">{h.status}</span>
+                      <span className="text-[8px] font-bold text-slate-400">{new Date(h.date).toLocaleDateString()}</span>
+                    </div>
+                    {h.note && <p className="text-[10px] text-slate-500 font-medium italic mt-0.5 line-clamp-1">{h.note}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -298,8 +462,14 @@ const VisitDetailsPopup: React.FC<{ visit: SiteVisit, onClose: () => void, onAct
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <button onClick={() => { onAction('reschedule'); }} className="py-4 btn-3d btn-3d-white rounded-2xl text-[10px] font-black uppercase">Reschedule</button>
-        <button onClick={() => { onAction('feedback'); }} className="py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase">Feedback</button>
+        {visit.status !== 'Completed' ? (
+          <>
+            <button onClick={() => { onAction('reschedule'); }} className="py-4 btn-3d btn-3d-white rounded-2xl text-[10px] font-black uppercase">Reschedule</button>
+            <button onClick={() => { onAction('feedback'); }} className="py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase">Feedback</button>
+          </>
+        ) : (
+          <button onClick={onClose} className="col-span-2 py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase">Close Window</button>
+        )}
       </div>
     </div>
   </div>
