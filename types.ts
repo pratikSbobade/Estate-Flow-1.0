@@ -19,7 +19,16 @@ export enum UserRole {
 }
 
 export type ResourceAction = 'Read' | 'Add' | 'Edit' | 'Delete' | 'Assign';
-export type ResourceType = 'Properties' | 'Leads' | 'Site Visits' | 'Users' | 'Reports' | 'Admin' | 'WhatsApp';
+export type ResourceType = 
+  | 'Properties' 
+  | 'Leads' 
+  | 'Site Visits' 
+  | 'Reports' 
+  | 'Admin: Team' 
+  | 'Admin: Roles' 
+  | 'Admin: Import' 
+  | 'Admin: Templates' 
+  | 'WhatsApp';
 
 export interface RolePermissions {
   [resource: string]: {

@@ -271,7 +271,7 @@ const AppContent: React.FC = () => {
           
           <Route path="/clients" element={
             canReadLeads ? (
-              <ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} />
+              <ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} checkPermission={checkPermission} />
             ) : (
               <Navigate to="/" replace />
             )
@@ -279,7 +279,7 @@ const AppContent: React.FC = () => {
 
           <Route path="/visits" element={
             canReadVisits ? (
-              <VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} />
+              <VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} checkPermission={checkPermission} />
             ) : (
               <Navigate to="/" replace />
             )
@@ -287,7 +287,7 @@ const AppContent: React.FC = () => {
 
           <Route path="/properties" element={
             canReadProperties ? (
-              <PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} />
+              <PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} />
             ) : (
               <Navigate to="/" replace />
             )
@@ -298,7 +298,7 @@ const AppContent: React.FC = () => {
           <Route 
             path="/admin" 
             element={isAdmin ? (
-              <AdminPanel clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsersToApprove} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} />
+              <AdminPanel clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsersToApprove} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} checkPermission={checkPermission} />
             ) : (
               <Navigate to="/" replace />
             )} 
