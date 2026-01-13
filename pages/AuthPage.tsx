@@ -23,7 +23,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
     // Get mock users from storage
     const usersJson = localStorage.getItem('ef_user_registry');
     const users: UserProfile[] = usersJson ? JSON.parse(usersJson) : [
-      { id: 'ADMIN-01', name: 'Estate Flow Super', role: UserRole.SUPER_ADMIN, email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' }
+      { id: 'ADMIN-01', name: 'Estate Flow Super', role: UserRole.SUPER_ADMIN, email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' },
+      { id: 'ADMIN-02', name: 'Pratik Bobade', role: UserRole.SUPER_ADMIN, email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved' }
     ];
 
     if (mode === 'login') {

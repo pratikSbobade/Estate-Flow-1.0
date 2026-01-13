@@ -86,7 +86,10 @@ const AppContent: React.FC = () => {
           setPendingUsers(registry.filter(u => u.approvalStatus === 'Pending'));
         } else {
           // Initialize registry with admin if empty
-          const initial = [{ id: 'ADMIN-01', name: 'Estate Flow Super', role: UserRole.SUPER_ADMIN, email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' }];
+          const initial = [
+            { id: 'ADMIN-01', name: 'Estate Flow Super', role: UserRole.SUPER_ADMIN, email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' },
+            { id: 'ADMIN-02', name: 'Pratik Bobade', role: UserRole.SUPER_ADMIN, email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved' }
+          ];
           localStorage.setItem('ef_user_registry', JSON.stringify(initial));
         }
       } catch (error) {
