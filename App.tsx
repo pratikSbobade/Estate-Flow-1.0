@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -58,8 +58,25 @@ const AppContent: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [visits, setVisits] = useState<SiteVisit[]>([]);
-  const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
+  const [fullUserRegistry, setFullUserRegistry] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const pendingUsers = useMemo(() => fullUserRegistry.filter(u => u.approvalStatus === 'Pending'), [fullUserRegistry]);
+
+  const refreshUserRegistry = useCallback(() => {
+    const registryJson = localStorage.getItem('ef_user_registry');
+    if (registryJson) {
+      const registry: UserProfile[] = JSON.parse(registryJson);
+      setFullUserRegistry(registry);
+    } else {
+      const initial = [
+        { id: 'ADMIN-01', name: 'Estate Flow Super', role: 'role_admin', email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved', createdAt: new Date().toISOString() },
+        { id: 'ADMIN-02', name: 'Pratik Bobade', role: 'role_admin', email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved', createdAt: new Date().toISOString() }
+      ];
+      localStorage.setItem('ef_user_registry', JSON.stringify(initial));
+      setFullUserRegistry(initial);
+    }
+  }, []);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -79,19 +96,7 @@ const AppContent: React.FC = () => {
         if (propertiesRes.data) setProperties(propertiesRes.data);
         if (visitsRes.data) setVisits(visitsRes.data);
         
-        // Sync user registry for admin use
-        const registryJson = localStorage.getItem('ef_user_registry');
-        if (registryJson) {
-          const registry: UserProfile[] = JSON.parse(registryJson);
-          setPendingUsers(registry.filter(u => u.approvalStatus === 'Pending'));
-        } else {
-          // Initialize registry with admin if empty
-          const initial = [
-            { id: 'ADMIN-01', name: 'Estate Flow Super', role: UserRole.SUPER_ADMIN, email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' },
-            { id: 'ADMIN-02', name: 'Pratik Bobade', role: UserRole.SUPER_ADMIN, email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved' }
-          ];
-          localStorage.setItem('ef_user_registry', JSON.stringify(initial));
-        }
+        refreshUserRegistry();
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -100,7 +105,7 @@ const AppContent: React.FC = () => {
     };
 
     fetchData();
-  }, [currentUser]);
+  }, [currentUser, refreshUserRegistry]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -193,7 +198,7 @@ const AppContent: React.FC = () => {
     setSuccessMessage(`Import of ${data.length} records completed.`);
   };
 
-  const handleUserApproval = (userId: string, status: 'Approved' | 'Rejected', role?: string) => {
+  const handleUserApproval = (userId: string, status: UserProfile['approvalStatus'], role?: string) => {
     const registryJson = localStorage.getItem('ef_user_registry');
     if (registryJson) {
       let registry: UserProfile[] = JSON.parse(registryJson);
@@ -204,7 +209,7 @@ const AppContent: React.FC = () => {
         return u;
       });
       localStorage.setItem('ef_user_registry', JSON.stringify(registry));
-      setPendingUsers(registry.filter(u => u.approvalStatus === 'Pending'));
+      setFullUserRegistry(registry);
       setSuccessMessage(`User profile ${status.toLowerCase()}.`);
     }
   };

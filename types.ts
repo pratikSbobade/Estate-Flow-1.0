@@ -46,7 +46,7 @@ export interface UserProfile {
   id: string;
   name: string;
   role: UserRole | string;
-  approvalStatus: 'Pending' | 'Approved' | 'Rejected';
+  approvalStatus: 'Pending' | 'Approved' | 'Rejected' | 'Deactivated';
   email: string;
   password?: string; // Simulated for mock auth
   photo?: string;

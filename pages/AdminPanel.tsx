@@ -8,7 +8,7 @@ interface AdminPanelProps {
   visits: SiteVisit[];
   pendingUsers: UserProfile[];
   onBulkImport: (type: 'Clients' | 'Properties' | 'Visits', data: any[]) => void;
-  onApproveUser: (userId: string, status: 'Approved' | 'Rejected', role?: string) => void;
+  onApproveUser: (userId: string, status: UserProfile['approvalStatus'], role?: string) => void;
 }
 
 const RESOURCES: ResourceType[] = ['Leads', 'Properties', 'Site Visits', 'Users', 'Reports', 'Admin', 'WhatsApp'];
@@ -33,16 +33,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   clients, properties, visits, pendingUsers, onBulkImport, onApproveUser 
 }) => {
   const [activeTab, setActiveTab] = useState<'approvals' | 'csv' | 'templates' | 'roles'>('approvals');
+  const [userSearch, setUserSearch] = useState('');
   
   // Create User State
   const [isCreatingUser, setIsCreatingUser] = useState(false);
-  const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'role_agent' });
+  const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: '', status: 'Approved' as 'Approved' | 'Pending' });
 
   // Custom Roles State
   const [customRoles, setCustomRoles] = useState<CustomRole[]>(() => {
     const saved = localStorage.getItem('ef_custom_roles');
     return saved ? JSON.parse(saved) : [
       { id: 'role_admin', name: 'Super Admin', description: 'Full system access', permissions: RESOURCES.reduce((acc, r) => ({...acc, [r]: {Read:true, Add:true, Edit:true, Delete:true, Assign:true}}), {}), isSystem: true },
+      { id: 'role_manager', name: 'Sales Manager', description: 'Team and Lead management', permissions: RESOURCES.reduce((acc, r) => ({...acc, [r]: {Read:true, Add:true, Edit:true, Delete:false, Assign:true}}), {}), isSystem: true },
       { id: 'role_agent', name: 'Standard Agent', description: 'Sales execution role', permissions: RESOURCES.reduce((acc, r) => ({...acc, [r]: {Read:true, Add:true, Edit:true, Delete:false, Assign:false}}), {}), isSystem: true }
     ];
   });
@@ -50,6 +52,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isCreatingRole, setIsCreatingRole] = useState(false);
   const [editingRole, setEditingRole] = useState<CustomRole | null>(null);
   const [newRoleData, setNewRoleData] = useState<Partial<CustomRole>>({ name: '', description: '', permissions: DEFAULT_PERMISSIONS() });
+
+  // Directory state for active users
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  
+  useEffect(() => {
+    const registryJson = localStorage.getItem('ef_user_registry');
+    if (registryJson) {
+      setAllUsers(JSON.parse(registryJson));
+    }
+  }, [pendingUsers, isCreatingUser]);
+
+  // Handle User Table Actions
+  const handleUpdateStatus = (userId: string, status: UserProfile['approvalStatus']) => {
+    const updated = allUsers.map(u => u.id === userId ? { ...u, approvalStatus: status } : u);
+    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+    setAllUsers(updated);
+    onApproveUser(userId, status); // Keep parent in sync
+  };
+
+  const handleRemoveUser = (userId: string) => {
+    if (!window.confirm('Delete this profile permanently? This cannot be undone.')) return;
+    const updated = allUsers.filter(u => u.id !== userId);
+    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+    setAllUsers(updated);
+    onApproveUser(userId, 'Rejected'); // Use Rejected as a placeholder for removal in parent sync
+  };
+
+  const handleUpdateUserRole = (userId: string, newRoleId: string) => {
+    const updated = allUsers.map(u => u.id === userId ? { ...u, role: newRoleId } : u);
+    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+    setAllUsers(updated);
+  };
+
+  // Filtered Users for Directory
+  const filteredDirectory = allUsers.filter(u => 
+    (u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())) &&
+    u.approvalStatus !== 'Rejected'
+  );
 
   // WhatsApp Templates State
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>(() => {
@@ -66,11 +106,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Approval State
-  const [userRoleMap, setUserRoleMap] = useState<Record<string, string>>({});
-
   const handleManualUserCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newUserForm.role) return;
+
     const registryJson = localStorage.getItem('ef_user_registry');
     const registry: UserProfile[] = registryJson ? JSON.parse(registryJson) : [];
     
@@ -80,13 +119,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       email: newUserForm.email,
       password: newUserForm.password,
       role: newUserForm.role,
-      approvalStatus: 'Approved',
+      approvalStatus: newUserForm.status,
       createdAt: new Date().toISOString()
     };
 
-    localStorage.setItem('ef_user_registry', JSON.stringify([...registry, newUser]));
+    const updated = [...registry, newUser];
+    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+    setAllUsers(updated);
     setIsCreatingUser(false);
-    setNewUserForm({ name: '', email: '', password: '', role: 'role_agent' });
+    setNewUserForm({ name: '', email: '', password: '', role: '', status: 'Approved' });
   };
 
   const handleSaveRole = () => {
@@ -187,10 +228,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Super Admin Console</h1>
-          <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Management, Compliance & Scaling</p>
+          <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Governance, Role Management & Directory</p>
         </div>
         <div className="flex bg-white dark:bg-slate-800 p-1.5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 transition-colors overflow-x-auto no-scrollbar">
-          <button onClick={() => setActiveTab('approvals')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'approvals' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Approvals & Users</button>
+          <button onClick={() => setActiveTab('approvals')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'approvals' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Team Directory</button>
           <button onClick={() => setActiveTab('roles')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'roles' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Roles & Access</button>
           <button onClick={() => setActiveTab('csv')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'csv' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>CSV Upload</button>
           <button onClick={() => setActiveTab('templates')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'templates' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>WA Templates</button>
@@ -198,74 +239,141 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
 
       {activeTab === 'approvals' && (
-        <div className="space-y-8">
-          <div className="flex items-center justify-between">
-             <div>
-                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">User Orchestration</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Approve signups or add team members manually</p>
-             </div>
-             <button 
-               onClick={() => setIsCreatingUser(true)}
-               className="px-8 py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest"
-             >
-               + Create Team Access
-             </button>
-          </div>
+        <div className="space-y-12">
+          {/* Unified Section: Team Governance */}
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 gap-4">
+               <div>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">Team Governance</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Manage access, status, and roles for all members</p>
+               </div>
+               <div className="flex gap-2">
+                 <div className="relative w-full sm:w-64">
+                    <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input 
+                      type="text" 
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      placeholder="Filter members..." 
+                      className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    />
+                 </div>
+                 <button 
+                   onClick={() => setIsCreatingUser(true)}
+                   className="px-8 py-3 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+                 >
+                   <i className="fas fa-user-plus"></i> Onboard
+                 </button>
+               </div>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pendingUsers.map(user => (
-              <div key={user.id} className="card-neo p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 transition-colors">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center text-indigo-600 shadow-inner">
-                    <i className="fas fa-user-shield text-xl"></i>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase truncate leading-tight">{user.name}</h3>
-                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{user.region || 'Remote'} • Signup Pending</p>
-                  </div>
-                </div>
-                
-                <div className="space-y-4 mb-8">
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Professional Email</p>
-                    <p className="text-[10px] font-bold text-slate-600 dark:text-slate-300 truncate">{user.email}</p>
-                  </div>
-                  
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Access Role</label>
-                    <div className="relative">
-                      <select 
-                        value={userRoleMap[user.id] || ''}
-                        onChange={(e) => setUserRoleMap(prev => ({...prev, [user.id]: e.target.value}))}
-                        className="w-full p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-[10px] font-black uppercase dark:text-white outline-none focus:border-indigo-500 shadow-sm"
-                      >
-                        <option value="">Select a Role...</option>
-                        {customRoles.map(r => (
-                          <option key={r.id} value={r.id}>{r.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
+            <div className="bg-white dark:bg-slate-800 rounded-[3rem] border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+               <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                     <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-700">
+                           <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">User Profile</th>
+                           <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                           <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Access Role</th>
+                           <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Governance Actions</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
+                        {filteredDirectory.map(user => {
+                           const userRoleObj = customRoles.find(r => r.id === user.role) || customRoles[2];
+                           const isPending = user.approvalStatus === 'Pending';
+                           const isDeactivated = user.approvalStatus === 'Deactivated';
+                           const isApproved = user.approvalStatus === 'Approved';
 
-                <div className="flex gap-2">
-                  <button onClick={() => onApproveUser(user.id, 'Rejected')} className="flex-1 py-4 btn-3d btn-3d-red text-white rounded-xl text-[9px] font-black uppercase">Reject</button>
-                  <button 
-                    onClick={() => onApproveUser(user.id, 'Approved', userRoleMap[user.id])} 
-                    disabled={!userRoleMap[user.id]}
-                    className={`flex-[2] py-4 btn-3d rounded-xl text-[9px] font-black uppercase transition-all ${userRoleMap[user.id] ? 'btn-3d-emerald text-white' : 'bg-slate-100 text-slate-300 cursor-not-allowed shadow-none'}`}
-                  >
-                    Grant Access
-                  </button>
-                </div>
-              </div>
-            ))}
-            {pendingUsers.length === 0 && (
-              <div className="col-span-full py-24 text-center border-4 border-dashed border-slate-100 dark:border-slate-800 rounded-[3rem]">
-                <i className="fas fa-check-double text-slate-200 text-5xl mb-4"></i>
-                <p className="text-xs font-black text-slate-300 uppercase tracking-widest">Team registry is fully validated</p>
-              </div>
-            )}
+                           return (
+                              <tr key={user.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors">
+                                 <td className="px-8 py-5">
+                                    <div className="flex items-center gap-3">
+                                       <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm shadow-inner ${
+                                         isPending ? 'bg-amber-50 text-amber-600' : isDeactivated ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600'
+                                       }`}>
+                                          {user.name[0].toUpperCase()}
+                                       </div>
+                                       <div>
+                                          <p className="text-xs font-black text-slate-800 dark:text-white uppercase leading-tight">{user.name}</p>
+                                          <p className="text-[10px] font-medium text-slate-400">{user.email}</p>
+                                       </div>
+                                    </div>
+                                 </td>
+                                 <td className="px-8 py-5 text-center">
+                                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${
+                                      isApproved ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30' :
+                                      isPending ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/30' :
+                                      'bg-slate-100 text-slate-500'
+                                    }`}>
+                                      {user.approvalStatus}
+                                    </span>
+                                 </td>
+                                 <td className="px-8 py-5">
+                                    <div className="relative inline-block">
+                                       <select 
+                                          value={user.role} 
+                                          onChange={(e) => handleUpdateUserRole(user.id, e.target.value)}
+                                          className="bg-indigo-50 dark:bg-indigo-900/30 border-none text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest outline-none cursor-pointer rounded-lg px-3 py-1.5 hover:bg-indigo-100 transition-colors appearance-none pr-8"
+                                       >
+                                          <option value="" disabled>Unassigned</option>
+                                          {customRoles.map(r => (
+                                             <option key={r.id} value={r.id} className="dark:bg-slate-800 text-slate-800 dark:text-white">{r.name}</option>
+                                          ))}
+                                       </select>
+                                       <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 text-[8px] pointer-events-none"></i>
+                                    </div>
+                                 </td>
+                                 <td className="px-8 py-5">
+                                    <div className="flex gap-2">
+                                       {isPending && (
+                                         <button 
+                                           onClick={() => handleUpdateStatus(user.id, 'Approved')}
+                                           className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[8px] font-black uppercase hover:bg-emerald-700 transition-all flex items-center gap-1"
+                                           title="Approve Entry"
+                                         >
+                                           <i className="fas fa-check-circle"></i> Approve
+                                         </button>
+                                       )}
+                                       {isApproved && (
+                                         <button 
+                                           onClick={() => handleUpdateStatus(user.id, 'Deactivated')}
+                                           className="w-9 h-9 bg-slate-50 dark:bg-slate-700 rounded-xl text-slate-300 hover:text-amber-500 transition-colors" 
+                                           title="Deactivate Account"
+                                         >
+                                           <i className="fas fa-power-off text-xs"></i>
+                                         </button>
+                                       )}
+                                       {isDeactivated && (
+                                         <button 
+                                           onClick={() => handleUpdateStatus(user.id, 'Approved')}
+                                           className="w-9 h-9 bg-slate-50 dark:bg-slate-700 rounded-xl text-slate-300 hover:text-emerald-500 transition-colors" 
+                                           title="Activate Account"
+                                         >
+                                           <i className="fas fa-play text-xs"></i>
+                                         </button>
+                                       )}
+                                       <button 
+                                         onClick={() => handleRemoveUser(user.id)}
+                                         className="w-9 h-9 bg-slate-50 dark:bg-slate-700 rounded-xl text-slate-300 hover:text-red-500 transition-colors" 
+                                         title="Remove Profile"
+                                       >
+                                         <i className="fas fa-trash-alt text-xs"></i>
+                                       </button>
+                                    </div>
+                                 </td>
+                              </tr>
+                           );
+                        })}
+                     </tbody>
+                  </table>
+               </div>
+               {filteredDirectory.length === 0 && (
+                  <div className="py-24 text-center">
+                     <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No matching team members found</p>
+                  </div>
+               )}
+            </div>
           </div>
 
           {isCreatingUser && (
@@ -273,35 +381,55 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up">
                 <div className="p-8 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
                   <div>
-                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Add Team Member</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Instant activation bypasses approval</p>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Manual Profile Entry</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Create a team profile with designated access</p>
                   </div>
                   <button onClick={() => setIsCreatingUser(false)} className="w-10 h-10 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400"><i className="fas fa-times"></i></button>
                 </div>
                 <form onSubmit={handleManualUserCreate} className="p-8 space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
-                    <input required value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-xs font-bold dark:text-white outline-none" />
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Identity Name</label>
+                    <input required value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Email ID</label>
-                    <input type="email" required value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-xs font-bold dark:text-white outline-none" />
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Corporate Email</label>
+                    <input type="email" required value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Temporary Access Key</label>
-                    <input type="password" required value={newUserForm.password} onChange={e => setNewUserForm({...newUserForm, password: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-xs font-bold dark:text-white outline-none" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Designated Role</label>
-                    <select value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-[10px] font-black uppercase dark:text-white outline-none">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assigned Access Level</label>
+                    <select required value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-[10px] font-black uppercase dark:text-white outline-none focus:border-indigo-500">
+                       <option value="">Select Privilege Level...</option>
                        {customRoles.map(r => (
                          <option key={r.id} value={r.id}>{r.name}</option>
                        ))}
                     </select>
                   </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Activation Status</label>
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700">
+                       <button 
+                         type="button" 
+                         onClick={() => setNewUserForm({...newUserForm, status: 'Approved'})}
+                         className={`py-3 rounded-xl text-[9px] font-black uppercase transition-all ${newUserForm.status === 'Approved' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+                       >
+                         Instant Approve
+                       </button>
+                       <button 
+                         type="button" 
+                         onClick={() => setNewUserForm({...newUserForm, status: 'Pending'})}
+                         className={`py-3 rounded-xl text-[9px] font-black uppercase transition-all ${newUserForm.status === 'Pending' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
+                       >
+                         Send to Queue
+                       </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 pt-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Profile Entry Key</label>
+                    <input type="password" required value={newUserForm.password} onChange={e => setNewUserForm({...newUserForm, password: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500" placeholder="••••••••" />
+                  </div>
                   <div className="flex gap-4 pt-4">
-                    <button type="button" onClick={() => setIsCreatingUser(false)} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase">Discard</button>
-                    <button type="submit" className="flex-[2] py-4 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase">Create & Activate</button>
+                    <button type="button" onClick={() => setIsCreatingUser(false)} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase">Cancel</button>
+                    <button type="submit" disabled={!newUserForm.role} className={`flex-[2] py-4 btn-3d rounded-2xl font-black text-[10px] uppercase ${newUserForm.role ? 'btn-3d-indigo text-white shadow-indigo-100' : 'bg-slate-100 text-slate-300 cursor-not-allowed shadow-none'}`}>Create Profile</button>
                   </div>
                 </form>
               </div>
@@ -312,33 +440,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {activeTab === 'roles' && (
         <div className="space-y-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
              <div>
-                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">Roles & Access Orchestrator</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Define granular permission matrices</p>
+                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">Privilege Architect</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Define custom permission sets for the team</p>
              </div>
              <button 
               onClick={() => { setIsCreatingRole(true); setEditingRole(null); setNewRoleData({ name: '', description: '', permissions: DEFAULT_PERMISSIONS() }); }} 
-              className="px-8 py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest"
+              className="px-8 py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100"
              >
-               + Create New Role
+               + Construct New Role
              </button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
              {customRoles.map(role => (
-               <div key={role.id} className="card-neo p-8 rounded-[3rem] border border-slate-100 dark:border-slate-700 transition-colors group">
+               <div key={role.id} className="card-neo p-8 rounded-[3rem] border border-slate-100 dark:border-slate-700 transition-colors group relative bg-white dark:bg-slate-800">
                   <div className="flex justify-between items-start mb-4">
                      <div>
                         <h4 className="text-lg font-black text-slate-800 dark:text-white uppercase leading-tight">{role.name}</h4>
                         <p className="text-[10px] font-medium text-slate-400 uppercase mt-1 tracking-tight">{role.description}</p>
                      </div>
                      {role.isSystem ? (
-                       <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-400 rounded-lg text-[7px] font-black uppercase">System</span>
+                       <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-400 rounded-lg text-[7px] font-black uppercase">System Core</span>
                      ) : (
                        <button 
                         onClick={() => { setEditingRole(role); setNewRoleData(role); setIsCreatingRole(true); }}
-                        className="w-10 h-10 bg-slate-50 dark:bg-slate-700 rounded-xl flex items-center justify-center text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"
+                        className="w-10 h-10 bg-slate-50 dark:bg-slate-700 rounded-xl flex items-center justify-center text-indigo-600 opacity-0 group-hover:opacity-100 transition-all shadow-sm"
                        >
                          <i className="fas fa-edit text-xs"></i>
                        </button>
@@ -346,7 +474,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   
                   <div className="pt-4 border-t border-slate-50 dark:border-slate-700">
-                     <p className="text-[8px] font-black text-slate-400 uppercase mb-3">Privilege Summary</p>
+                     <p className="text-[8px] font-black text-slate-400 uppercase mb-3 tracking-widest">Active Privileges</p>
                      <div className="flex flex-wrap gap-1.5">
                         {RESOURCES.slice(0, 4).map(res => {
                           const resPermissions = role.permissions[res];
@@ -370,8 +498,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                <div className="bg-white dark:bg-slate-800 w-full max-w-5xl h-[90vh] rounded-[3.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up transition-colors">
                   <div className="p-10 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
                      <div>
-                        <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{editingRole ? 'Edit Privilege Level' : 'Configure New Role'}</h3>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Set granular access via the matrix below</p>
+                        <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{editingRole ? 'Edit Role Schema' : 'Configure New Role Schema'}</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Design granular access across all functional modules</p>
                      </div>
                      <button onClick={() => setIsCreatingRole(false)} className="w-12 h-12 bg-white dark:bg-slate-700 rounded-[1.5rem] flex items-center justify-center text-slate-400 shadow-sm"><i className="fas fa-times"></i></button>
                   </div>
@@ -379,20 +507,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="flex-1 overflow-y-auto p-10 space-y-10 hide-scrollbar">
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                         <div className="space-y-1.5">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Role Identifier Name</label>
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Role Unique Identifier</label>
                            <input 
                               value={newRoleData.name}
                               onChange={e => setNewRoleData(prev => ({ ...prev, name: e.target.value }))}
-                              placeholder="e.g. Nagpur Senior Agent"
+                              placeholder="e.g. Regional Supervisor"
                               className="w-full p-5 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-3xl text-sm font-black dark:text-white outline-none focus:border-indigo-600 transition-colors shadow-inner"
                            />
                         </div>
                         <div className="space-y-1.5">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Scope Description</label>
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Operational Context</label>
                            <input 
                               value={newRoleData.description}
                               onChange={e => setNewRoleData(prev => ({ ...prev, description: e.target.value }))}
-                              placeholder="Describe the responsibilities..."
+                              placeholder="Describe duties associated with this role..."
                               className="w-full p-5 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-3xl text-sm font-bold dark:text-white outline-none focus:border-indigo-600 transition-colors shadow-inner"
                            />
                         </div>
@@ -409,7 +537,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                               <thead>
                                  <tr>
                                     <th className="p-6 text-left bg-slate-50 dark:bg-slate-900/50 rounded-tl-[2rem] border-b dark:border-slate-700">
-                                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resource Master</span>
+                                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Module Namespace</span>
                                     </th>
                                     {ACTIONS.map(action => (
                                        <th key={action} className="p-6 text-center bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-700">
@@ -468,7 +596,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
                   <div className="p-10 border-t border-slate-50 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex gap-4 shrink-0 transition-colors">
                      <button onClick={() => setIsCreatingRole(false)} className="flex-1 py-5 btn-3d btn-3d-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest">Abandon</button>
-                     <button onClick={handleSaveRole} className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-xl">Apply Role Configuration</button>
+                     <button onClick={handleSaveRole} className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100">Apply Role Configuration</button>
                   </div>
                </div>
             </div>
@@ -478,10 +606,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {activeTab === 'csv' && (
         <div className="max-w-3xl mx-auto space-y-8">
-           <div className="card-neo p-8 rounded-[3rem] text-center space-y-8">
+           <div className="card-neo p-8 rounded-[3rem] text-center space-y-8 bg-white dark:bg-slate-800 transition-colors">
               <div className="space-y-2">
                 <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">Bulk Data Injection</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select category and upload your CSV source</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sync external data sources with the central ecosystem</p>
               </div>
 
               <div className="grid grid-cols-3 gap-3 p-2 bg-slate-50 dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 transition-colors">
@@ -504,8 +632,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <i className="fas fa-cloud-upload-alt text-2xl"></i>
                  </div>
                  <div className="space-y-1">
-                    <p className="text-sm font-black text-slate-800 dark:text-white uppercase">Upload {importType} Master List</p>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase">Standard UTF-8 .csv files only</p>
+                    <p className="text-sm font-black text-slate-800 dark:text-white uppercase">Upload {importType} Manifest</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Standard UTF-8 .csv files accepted</p>
                  </div>
                  <input type="file" ref={fileInputRef} accept=".csv" className="hidden" onChange={handleCSVUpload} />
               </div>
@@ -515,11 +643,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {activeTab === 'templates' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-          <div className="card-neo p-8 rounded-[3rem] h-fit lg:sticky lg:top-36 transition-colors">
-             <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase mb-8">Craft New Template</h3>
+          <div className="card-neo p-8 rounded-[3rem] h-fit lg:sticky lg:top-36 transition-colors bg-white dark:bg-slate-800">
+             <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase mb-8">Interaction Architect</h3>
              <div className="space-y-6">
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Category</label>
+                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Contextual Category</label>
                    <select 
                      value={newTemplate.category} 
                      onChange={e => setNewTemplate(prev => ({ ...prev, category: e.target.value as any }))}
@@ -533,7 +661,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Insert Dynamic Fields</label>
+                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Dynamic Field Injection</label>
                    <div className="flex flex-wrap gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800">
                       {CATEGORY_FIELDS[newTemplate.category || 'General'].map(field => (
                         <button 
@@ -548,22 +676,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Template Name</label>
+                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Internal Alias Name</label>
                    <input 
                      value={newTemplate.name} 
                      onChange={e => setNewTemplate(prev => ({ ...prev, name: e.target.value }))}
-                     placeholder="e.g. Possession Update"
+                     placeholder="e.g. Schedule Confirmation"
                      className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors shadow-sm" 
                    />
                 </div>
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">WhatsApp Body Content</label>
+                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Standard Messaging Protocol</label>
                    <textarea 
                      ref={textAreaRef}
                      value={newTemplate.message} 
                      onChange={e => setNewTemplate(prev => ({ ...prev, message: e.target.value }))}
                      rows={6}
-                     placeholder="Type your message here. Click chips above to insert variables..."
+                     placeholder="Design your template string here. Use the field chips to insert placeholders..."
                      className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors shadow-sm"
                    />
                 </div>
@@ -572,7 +700,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   disabled={!newTemplate.name || !newTemplate.message}
                   className="w-full py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                  Publish Template
+                  Publish Template Set
                 </button>
              </div>
           </div>
@@ -580,11 +708,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* Template List */}
           <div className="space-y-6">
              <div className="flex justify-between items-center px-2">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Template Repository</h4>
-                <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/40 px-3 py-1 rounded-lg transition-colors">{templates.length} Active</span>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Content Ecosystem</h4>
+                <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/40 px-3 py-1 rounded-lg transition-colors">{templates.length} Modules</span>
              </div>
              {templates.map(tpl => (
-               <div key={tpl.id} className="card-neo p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 transition-colors group hover:border-indigo-400">
+               <div key={tpl.id} className="card-neo p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 transition-colors group hover:border-indigo-400 bg-white dark:bg-slate-800">
                   <div className="flex justify-between items-start mb-4">
                      <div>
                         <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800 transition-colors mb-1.5 inline-block">{tpl.category}</span>
