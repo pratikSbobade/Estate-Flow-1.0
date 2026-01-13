@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { UserRole } from '../types';
 
 interface HeaderProps {
   searchQuery: string;
@@ -9,14 +10,14 @@ interface HeaderProps {
   onFilterClick: () => void;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  role?: UserRole;
 }
 
-const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick, onFilterClick, theme, onToggleTheme }) => {
+const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick, onFilterClick, theme, onToggleTheme, role }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isMainPage = ['/clients', '/visits', '/properties'].includes(location.pathname);
-  // Visually consistent 'Add' button for all primary CRM entities
+  const isMainPage = ['/clients', '/visits', '/properties', '/admin'].includes(location.pathname);
   const isExpandedAddPage = ['/clients', '/properties', '/visits'].includes(location.pathname);
 
   const getPageTitle = () => {
@@ -26,19 +27,16 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
       case '/properties': return 'Properties';
       case '/emi': return 'EMI Calc';
       case '/profile': return 'My Profile';
+      case '/admin': return 'Admin Panel';
       default: return 'Dashboard';
     }
   };
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50">
-      {/* Top Brand Row */}
       <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4 sm:px-6 flex items-center justify-between shadow-sm transition-colors duration-300">
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate('/')} 
-            className="flex items-center gap-3 group"
-          >
+          <button onClick={() => navigate('/')} className="flex items-center gap-3 group">
             <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-[0_4px_12px_-4px_#4f46e5] transition-transform active:scale-95">
               <i className="fas fa-home-alt text-white text-sm"></i>
             </div>
@@ -50,68 +48,45 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <button 
-            onClick={onToggleTheme}
-            className="w-9 h-9 btn-3d btn-3d-white flex items-center justify-center rounded-xl transition-all"
-            title="Toggle Theme"
-          >
+          {role === UserRole.SUPER_ADMIN && (
+            <button 
+              onClick={() => navigate('/admin')}
+              className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${
+                location.pathname === '/admin' ? 'btn-3d-indigo text-white' : 'btn-3d-white'
+              }`}
+              title="Admin Panel"
+            >
+              <i className="fas fa-lock text-sm"></i>
+            </button>
+          )}
+
+          <button onClick={onToggleTheme} className="w-9 h-9 btn-3d btn-3d-white flex items-center justify-center rounded-xl transition-all" title="Toggle Theme">
             <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'} text-sm`}></i>
           </button>
 
-          <button 
-            onClick={() => navigate('/emi')}
-            className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${
-              location.pathname === '/emi' ? 'btn-3d-indigo text-white' : 'btn-3d-white'
-            }`}
-            title="EMI Calculator"
-          >
+          <button onClick={() => navigate('/emi')} className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${location.pathname === '/emi' ? 'btn-3d-indigo text-white' : 'btn-3d-white'}`} title="EMI Calculator">
             <i className="fas fa-calculator text-sm"></i>
           </button>
 
-          <button 
-            onClick={() => navigate('/profile')}
-            className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${
-              location.pathname === '/profile' ? 'btn-3d-indigo text-white' : 'btn-3d-white'
-            }`}
-            title="My Profile"
-          >
+          <button onClick={() => navigate('/profile')} className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${location.pathname === '/profile' ? 'btn-3d-indigo text-white' : 'btn-3d-white'}`} title="My Profile">
             <i className="fas fa-user-circle text-base"></i>
           </button>
         </div>
       </header>
 
-      {/* Secondary Search/Add/Filter Bar for Main Pages */}
       {isMainPage && (
         <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-700 px-4 py-3 flex items-center gap-2 animate-slide-up transition-colors duration-300">
           <div className="flex-1 relative">
             <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs"></i>
-            <input 
-              type="text"
-              placeholder={`Search ${getPageTitle()}...`}
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-slate-100 dark:bg-slate-700 border-none rounded-xl text-xs font-semibold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-slate-400 dark:placeholder-slate-500"
-            />
+            <input type="text" placeholder={`Search ${getPageTitle()}...`} value={searchQuery} onChange={(e) => onSearchChange(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-slate-100 dark:bg-slate-700 border-none rounded-xl text-xs font-semibold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-slate-400 dark:placeholder-slate-500" />
           </div>
           
-          {!isExpandedAddPage && (
-            <button 
-              onClick={onFilterClick}
-              className="w-10 h-10 btn-3d btn-3d-white flex items-center justify-center rounded-xl"
-              title="Filter"
-            >
-              <i className="fas fa-filter text-xs"></i>
+          {isExpandedAddPage && (
+            <button onClick={onAddClick} className="h-10 px-6 btn-3d btn-3d-indigo text-white flex items-center justify-center rounded-xl gap-2 transition-all" title="Add New">
+              <i className="fas fa-plus text-sm"></i>
+              <span className="text-[10px] font-black uppercase tracking-widest">Add</span>
             </button>
           )}
-
-          <button 
-            onClick={onAddClick}
-            className={`h-10 btn-3d btn-3d-indigo text-white flex items-center justify-center rounded-xl gap-2 transition-all ${isExpandedAddPage ? 'px-6' : 'w-10'}`}
-            title="Add New"
-          >
-            <i className="fas fa-plus text-sm"></i>
-            {isExpandedAddPage && <span className="text-[10px] font-black uppercase tracking-widest">Add</span>}
-          </button>
         </div>
       )}
     </div>

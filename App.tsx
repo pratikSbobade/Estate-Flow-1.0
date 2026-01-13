@@ -9,7 +9,8 @@ import VisitsPage from './pages/VisitsPage';
 import PropertiesPage from './pages/PropertiesPage';
 import ProfilePage from './pages/ProfilePage';
 import EmiCalculator from './pages/EmiCalculator';
-import { Client, Property, SiteVisit, ClientType, ClientStatus } from './types';
+import AdminPanel from './pages/AdminPanel';
+import { Client, Property, SiteVisit, ClientType, ClientStatus, UserRole, UserProfile } from './types';
 import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
 import BookVisitModal from './components/BookVisitModal';
@@ -51,7 +52,17 @@ const AppContent: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [visits, setVisits] = useState<SiteVisit[]>([]);
+  const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Super Admin state for role management (demo/mock)
+  const [currentUser, setCurrentUser] = useState<UserProfile>({
+    id: 'ADMIN-01',
+    name: 'Estate Flow Super',
+    role: UserRole.SUPER_ADMIN,
+    approvalStatus: 'Approved',
+    email: 'admin@estateflow.com'
+  });
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -69,6 +80,12 @@ const AppContent: React.FC = () => {
         if (clientsRes.data) setClients(clientsRes.data);
         if (propertiesRes.data) setProperties(propertiesRes.data);
         if (visitsRes.data) setVisits(visitsRes.data);
+        
+        // Mock pending users for admin demo
+        setPendingUsers([
+          { id: 'U-002', name: 'Amit Verma', role: UserRole.AGENT, approvalStatus: 'Pending', email: 'amit@ef.com', region: 'Nagpur East' },
+          { id: 'U-003', name: 'Priya Das', role: UserRole.AGENT, approvalStatus: 'Pending', email: 'priya@ef.com', region: 'Nagpur West' }
+        ]);
       } catch (error) {
         console.error('Error fetching data from Supabase:', error);
       } finally {
@@ -119,7 +136,6 @@ const AppContent: React.FC = () => {
     
     if (error) {
       console.error('Error adding visit:', error.message || error);
-      alert(`Error scheduling visit: ${error.message || 'Unknown error'}`);
     } else {
       setVisits(prev => [visitWithHistory, ...prev]);
       setIsBookVisitOpen(false);
@@ -129,30 +145,37 @@ const AppContent: React.FC = () => {
 
   const handleUpdateVisit = async (updatedVisit: SiteVisit) => {
     const { id, ...payload } = updatedVisit;
-    
-    const { error } = await supabase
-      .from('site_visits')
-      .update(payload)
-      .eq('id', id);
+    const { error } = await supabase.from('site_visits').update(payload).eq('id', id);
 
-    if (error) {
-      console.error('Error updating visit:', error.message || error);
-      alert(`Update failed: ${error.message || 'Unknown error'}`);
-    } else {
+    if (!error) {
       setVisits(prev => prev.map(v => v.id === updatedVisit.id ? updatedVisit : v));
       setSuccessMessage('Relevant activity is scheduled as per the records.');
     }
   };
 
+  const handleAddProperty = async (newProperty: Property) => {
+    const { error } = await supabase.from('properties').upsert([newProperty]);
+
+    if (!error) {
+      setProperties(prev => {
+        const exists = prev.find(p => p.id === newProperty.id);
+        if (exists) return prev.map(p => p.id === newProperty.id ? newProperty : p);
+        return [newProperty, ...prev];
+      });
+      setIsAddPropertyOpen(false);
+      setEditingProperty(null);
+      setSuccessMessage('Property details have been updated successfully.');
+      navigate('/properties');
+    } else {
+      console.error('Error saving property:', error.message || error);
+    }
+  };
+
   const handleAddClient = async (newClient: Client) => {
     const { interactions, ...payload } = newClient;
-    
     const { error } = await supabase.from('clients').upsert([payload]);
 
-    if (error) {
-      console.error('Error saving client:', error.message || error);
-      alert(`Error saving client: ${error.message || 'Unknown error'}`);
-    } else {
+    if (!error) {
       setClients(prev => {
         const exists = prev.find(c => c.id === newClient.id);
         if (exists) return prev.map(c => c.id === newClient.id ? newClient : c);
@@ -164,42 +187,16 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleUpdateClient = async (updatedClient: Client) => {
-    const { id, interactions, ...payload } = updatedClient;
-
-    const { error } = await supabase
-      .from('clients')
-      .update(payload)
-      .eq('id', id);
-
-    if (error) {
-      console.error('Error updating client:', error.message || error);
-      alert(`Client update failed: ${error.message || 'Unknown error'}`);
-    } else {
-      setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
-    }
+  const handleBulkImport = (type: 'Clients' | 'Properties' | 'Visits', data: any[]) => {
+    if (type === 'Clients') setClients(prev => [...data, ...prev]);
+    if (type === 'Properties') setProperties(prev => [...data, ...prev]);
+    if (type === 'Visits') setVisits(prev => [...data, ...prev]);
+    setSuccessMessage(`Bulk import of ${data.length} ${type} completed.`);
   };
 
-  const handleAddProperty = async (newProperty: Property) => {
-    const { error } = await supabase.from('properties').upsert([newProperty]);
-
-    if (error) {
-      console.error('Error saving property:', error.message || error);
-      alert(`Error saving property: ${error.message || 'Unknown error'}`);
-    } else {
-      setProperties(prev => {
-        const exists = prev.find(p => p.id === newProperty.id);
-        if (exists) {
-          // Robust deep-like merge for local state to ensure all fields reflect
-          return prev.map(p => p.id === newProperty.id ? { ...p, ...newProperty } : p);
-        }
-        return [newProperty, ...prev];
-      });
-      setEditingProperty(null);
-      setIsAddPropertyOpen(false);
-      setSuccessMessage('Property inventory has been updated.');
-      navigate('/properties');
-    }
+  const handleUserApproval = (userId: string, status: 'Approved' | 'Rejected', role?: string) => {
+    setPendingUsers(prev => prev.filter(u => u.id !== userId));
+    setSuccessMessage(`User profile ${status.toLowerCase()} with assigned role.`);
   };
 
   if (loading) {
@@ -222,20 +219,22 @@ const AppContent: React.FC = () => {
         onFilterClick={() => alert('Filter options opened')}
         theme={theme}
         onToggleTheme={toggleTheme}
+        role={currentUser.role as UserRole}
       />
       
-      <main className={`flex-grow ${['/clients', '/visits', '/properties'].includes(location.pathname) ? 'pt-32' : 'pt-20'} pb-28 px-4 max-w-7xl mx-auto w-full`}>
+      <main className={`flex-grow ${['/clients', '/visits', '/properties', '/admin'].includes(location.pathname) ? 'pt-32' : 'pt-20'} pb-28 px-4 max-w-7xl mx-auto w-full`}>
         <Routes>
           <Route path="/" element={<Dashboard clients={clients} properties={properties} visits={visits} />} />
-          <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleUpdateClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} />} />
-          <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleUpdateClient} />} />
+          <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} />} />
+          <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} />} />
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} />} />
-          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} />} />
+          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser.role as UserRole} onSwitchRole={(r) => setCurrentUser(prev => ({ ...prev, role: r }))} />} />
           <Route path="/emi" element={<EmiCalculator />} />
+          <Route path="/admin" element={<AdminPanel clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsers} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} />} />
         </Routes>
       </main>
 
-      <Footer />
+      <Footer role={currentUser.role as UserRole} />
 
       {isAddClientOpen && (
         <AddClientModal 

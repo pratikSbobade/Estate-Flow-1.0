@@ -12,6 +12,46 @@ export enum ClientType {
   PARTNER = 'Channel Partner'
 }
 
+export enum UserRole {
+  AGENT = 'Agent',
+  SUPER_ADMIN = 'Super Admin',
+  CUSTOM = 'Custom'
+}
+
+export type ResourceAction = 'Read' | 'Add' | 'Edit' | 'Delete' | 'Assign';
+export type ResourceType = 'Properties' | 'Leads' | 'Site Visits' | 'Users' | 'Reports' | 'Admin' | 'WhatsApp';
+
+export interface RolePermissions {
+  [resource: string]: {
+    [action in ResourceAction]: boolean;
+  };
+}
+
+export interface CustomRole {
+  id: string;
+  name: string;
+  description: string;
+  permissions: RolePermissions;
+  isSystem?: boolean;
+}
+
+export interface WhatsAppTemplate {
+  id: string;
+  category: 'Clients' | 'Properties' | 'Visits' | 'General';
+  name: string;
+  message: string;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  role: UserRole | string; // Can be a system role or a custom role ID
+  approvalStatus: 'Pending' | 'Approved' | 'Rejected';
+  email: string;
+  photo?: string;
+  region?: string;
+}
+
 export interface ClientInteraction {
   id: string;
   clientId: string;

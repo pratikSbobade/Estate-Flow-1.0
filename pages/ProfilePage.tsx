@@ -2,17 +2,19 @@
 import React, { useState, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend, AreaChart, Area
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Client, Property, SiteVisit, ClientStatus, ClientInteraction } from '../types';
+import { Client, Property, SiteVisit, ClientStatus, ClientInteraction, UserRole } from '../types';
 
 interface ProfilePageProps {
   clients: Client[];
   properties: Property[];
   visits: SiteVisit[];
+  userRole?: UserRole;
+  onSwitchRole?: (role: UserRole) => void;
 }
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, userRole, onSwitchRole }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'reports'>('info');
   const [targetRevenue, setTargetRevenue] = useState<number>(() => {
     return Number(localStorage.getItem('agent_target_revenue')) || 10000000; // 1 Cr default
@@ -20,7 +22,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
 
   const user = {
     name: 'Rahul Singh',
-    role: 'Senior Sales Agent',
+    role: userRole === UserRole.SUPER_ADMIN ? 'Super Admin' : 'Senior Sales Agent',
     id: 'AGENT-99',
     region: 'South Nagpur',
     reraId: 'NAG/A/2023/11023',
@@ -37,7 +39,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
 
   const targetProgress = Math.min(Math.round((actualRevenue / targetRevenue) * 100), 100);
 
-  // 2. DAILY ACTIVITY DATA (Real-time Filtered)
+  // 2. DAILY ACTIVITY DATA
   const dailyActivity = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     const newLeads = clients.filter(c => c.createdAt.startsWith(todayStr)).length;
@@ -80,45 +82,34 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
     const alerts = [];
     const gap = targetRevenue - actualRevenue;
     
-    // Target Motivation
     if (gap > 0) {
       alerts.push({
         id: 'target',
         icon: 'fa-rocket',
         title: 'Target Engine',
-        msg: `₹${(gap / 100000).toFixed(1)}L to reach your quarterly goal. Focus on high-value closings.`,
+        msg: `₹${(gap / 100000).toFixed(1)}L to reach your goal. Reach for the gold!`,
         color: 'bg-indigo-600'
-      });
-    } else {
-      alerts.push({
-        id: 'target-met',
-        icon: 'fa-medal',
-        title: 'Goal Achieved',
-        msg: 'You have surpassed your revenue target! Keep the momentum for the next tier.',
-        color: 'bg-emerald-600'
       });
     }
 
-    // Recent Pipeline Velocity
     const hotLeads = clients.filter(c => c.priority === ClientStatus.HOT).length;
     if (hotLeads > 0) {
       alerts.push({
         id: 'pipeline',
         icon: 'fa-fire',
         title: 'Hot Pipeline',
-        msg: `${hotLeads} Hot Leads ready for negotiation. Probability of closure is peaking.`,
+        msg: `${hotLeads} Hot Leads awaiting negotiation. Closing window is open!`,
         color: 'bg-red-500'
       });
     }
 
-    // Sales Quote Motivation (Based on visits needing quotes)
     const pendingQuotes = visits.filter(v => v.status === 'Completed' && v.feedback?.nextAction === 'Send Quotation').length;
     if (pendingQuotes > 0) {
       alerts.push({
         id: 'quote',
         icon: 'fa-file-invoice-dollar',
-        title: 'Quote High Velocity',
-        msg: `${pendingQuotes} sales quotes pending delivery. Each is a potential 3D revenue stream.`,
+        title: 'Quote Velocity',
+        msg: `${pendingQuotes} quotes need sending. Boost your conversion numbers now.`,
         color: 'bg-amber-500'
       });
     }
@@ -126,7 +117,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
     return alerts;
   }, [targetRevenue, actualRevenue, clients, visits]);
 
-  // 5. LEAD QUALITY SCORE DISTRIBUTION
   const leadQualityData = useMemo(() => {
     const statusCounts = { Hot: 0, Warm: 0, Cold: 0 };
     clients.forEach(c => {
@@ -148,7 +138,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
 
   return (
     <div className="space-y-8 animate-slide-up">
-      {/* PROFESSIONAL IDENTITY HEADER */}
       <div className="bg-white dark:bg-slate-800 p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transition-colors">
         <div className="relative mb-6">
           <div className="w-32 h-32 bg-slate-100 dark:bg-slate-700 rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-2xl transition-colors">
@@ -169,20 +158,30 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
              RERA Verified
            </span>
         </div>
+
+        {onSwitchRole && (
+          <div className="mt-8 flex gap-2">
+            <button 
+              onClick={() => onSwitchRole(UserRole.AGENT)} 
+              className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.AGENT ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
+            >
+              Agent Role
+            </button>
+            <button 
+              onClick={() => onSwitchRole(UserRole.SUPER_ADMIN)} 
+              className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.SUPER_ADMIN ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
+            >
+              Super Admin Role
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* NAVIGATION TABS */}
       <div className="flex bg-white dark:bg-slate-800 p-2 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm gap-2 transition-colors">
-        <button 
-          onClick={() => setActiveTab('info')}
-          className={`flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
-        >
+        <button onClick={() => setActiveTab('info')} className={`flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>
           <i className="fas fa-user-circle mr-2"></i> Professional Dossier
         </button>
-        <button 
-          onClick={() => setActiveTab('reports')}
-          className={`flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'reports' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
-        >
+        <button onClick={() => setActiveTab('reports')} className={`flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'reports' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>
           <i className="fas fa-chart-line mr-2"></i> Performance Analytics
         </button>
       </div>
@@ -207,14 +206,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
               <ProfileRow label="Agent Code" value={user.id} />
             </div>
           </div>
-          
-          <button className="w-full py-5 btn-3d btn-3d-red text-white font-black rounded-[2rem] flex items-center justify-center gap-3 uppercase text-xs tracking-widest">
-            <i className="fas fa-sign-out-alt"></i> Terminate Active Session
-          </button>
         </div>
       ) : (
         <div className="space-y-8 pb-10">
-          {/* PERFORMANCE FEED: MOTIVATION ALERTS */}
           <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
             {performanceAlerts.map(alert => (
               <div key={alert.id} className="min-w-[300px] bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm flex gap-4 animate-slide-up transition-colors">
@@ -229,7 +223,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
             ))}
           </div>
 
-          {/* TARGET REVENUE COMMAND CENTER */}
           <div className="bg-slate-900 text-white p-8 sm:p-10 rounded-[3.5rem] shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-10 opacity-5 transform rotate-12 transition-transform group-hover:rotate-45 duration-700">
                <i className="fas fa-trophy text-9xl"></i>
@@ -247,15 +240,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
               </div>
 
               <div className="space-y-4">
-                 <input 
-                   type="range" 
-                   min="1000000" 
-                   max="100000000" 
-                   step="1000000"
-                   value={targetRevenue} 
-                   onChange={(e) => handleSetTarget(Number(e.target.value))}
-                   className="w-full h-3 bg-white/10 rounded-full appearance-none cursor-pointer accent-indigo-400"
-                 />
+                 <input type="range" min="1000000" max="100000000" step="1000000" value={targetRevenue} onChange={(e) => handleSetTarget(Number(e.target.value))} className="w-full h-3 bg-white/10 rounded-full appearance-none cursor-pointer accent-indigo-400" />
                  <div className="flex justify-between text-[8px] font-black text-white/40 uppercase tracking-widest">
                     <span>Min (10L)</span>
                     <span>Max (10Cr)</span>
@@ -264,7 +249,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-4">
                  <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 backdrop-blur-sm transition-colors hover:bg-white/10">
-                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Target Completion</p>
+                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Completion</p>
                     <p className="text-3xl font-black">{targetProgress}%</p>
                  </div>
                  <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 backdrop-blur-sm transition-colors hover:bg-white/10">
@@ -272,50 +257,42 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
                     <p className="text-3xl font-black">₹{Math.max(0, (targetRevenue - actualRevenue)/1000000).toFixed(1)}L</p>
                  </div>
                  <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 backdrop-blur-sm transition-colors hover:bg-white/10">
-                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Agent Status</p>
-                    <p className="text-xl font-black uppercase tracking-widest">{targetProgress > 80 ? 'Gold Elite' : targetProgress > 40 ? 'Pro Active' : 'Consistent'}</p>
+                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-2">Performance Tier</p>
+                    <p className="text-xl font-black uppercase tracking-widest">{targetProgress > 80 ? 'Elite' : 'Active'}</p>
                  </div>
               </div>
             </div>
           </div>
 
-          {/* DAILY ACTIVITY PULSE */}
           <div className="card-neo p-8 rounded-[3rem]">
             <div className="flex justify-between items-center mb-8">
-               <div>
-                  <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white transition-colors">Daily Activity Command</h4>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Today's Ground Game</p>
-               </div>
+               <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white transition-colors">Daily Activity command</h4>
                <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 transition-colors">
                   <i className="fas fa-bolt text-xs"></i>
                </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
                <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-[2rem] border border-slate-100 dark:border-slate-800 text-center transition-colors hover:border-indigo-400">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Leads Generated</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">New Leads</p>
                   <p className="text-3xl font-black text-indigo-600">{dailyActivity.newLeads}</p>
                </div>
                <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-[2rem] border border-slate-100 dark:border-slate-800 text-center transition-colors hover:border-emerald-400">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Calls Closed</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Calls Disposed</p>
                   <p className="text-3xl font-black text-emerald-600">{dailyActivity.todayCalls}</p>
                </div>
                <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-[2rem] border border-slate-100 dark:border-slate-800 text-center transition-colors hover:border-amber-400">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Site Visits</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Visits Conducted</p>
                   <p className="text-3xl font-black text-amber-500">{dailyActivity.todayVisits}</p>
                </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* CALL VELOCITY - 2HR INTERVALS */}
             <div className="card-neo p-8 rounded-[3rem] lg:col-span-2">
                <div className="flex justify-between items-center mb-8">
                   <div>
                     <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white transition-colors">Call Intensity Distribution</h4>
-                    <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">2-Hour Record Velocity Analysis</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest transition-colors">Peak Hours Identified</span>
+                    <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">2-Hour Record Velocity Tracking</p>
                   </div>
                </div>
                <div className="h-72">
@@ -324,48 +301,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits }
                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                      <XAxis dataKey="label" axisLine={false} tickLine={false} style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }} />
                      <YAxis axisLine={false} tickLine={false} style={{ fontSize: '9px', fontWeight: 900 }} />
-                     <Tooltip 
-                        cursor={{ fill: '#f8fafc' }} 
-                        contentStyle={{ borderRadius: '20px', fontSize: '10px', border: 'none', fontWeight: 900, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} 
-                     />
-                     <Bar dataKey="count" name="Calls Disposed" fill="#4f46e5" radius={[10, 10, 0, 0]} barSize={40} />
+                     <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '20px', fontSize: '10px', border: 'none', fontWeight: 900, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} />
+                     <Bar dataKey="count" name="Calls" fill="#4f46e5" radius={[10, 10, 0, 0]} barSize={40} />
                    </BarChart>
                  </ResponsiveContainer>
-               </div>
-            </div>
-
-            {/* PIPELINE QUALITY CHART */}
-            <div className="card-neo p-8 rounded-[3rem]">
-               <div className="flex justify-between items-center mb-8">
-                  <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white transition-colors">Account Quality Distribution</h4>
-                  <span className="text-[9px] font-black text-red-500 uppercase tracking-widest transition-colors">Lead Scoring</span>
-               </div>
-               <div className="h-64">
-                 <ResponsiveContainer width="100%" height="100%">
-                   <PieChart>
-                     <Pie data={leadQualityData} cx="50%" cy="50%" innerRadius={60} outerRadius={85} paddingAngle={5} dataKey="value">
-                       {leadQualityData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                     </Pie>
-                     <Tooltip contentStyle={{ borderRadius: '20px', fontSize: '10px', border: 'none', fontWeight: 900 }} />
-                     <Legend iconType="circle" verticalAlign="bottom" wrapperStyle={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', paddingTop: '20px' }} />
-                   </PieChart>
-                 </ResponsiveContainer>
-               </div>
-            </div>
-
-            {/* CONVERSION METRICS GRID */}
-            <div className="grid grid-cols-1 gap-4">
-               <div className="bg-white dark:bg-slate-800 p-8 rounded-[3rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors hover:border-emerald-500">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Visit to Close Ratio</p>
-                  <p className="text-4xl font-black text-emerald-600">
-                    {Math.round((properties.filter(p => p.status === 'Sold').length / (visits.length || 1)) * 100)}%
-                  </p>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Efficiency Benchmark</p>
-               </div>
-               <div className="bg-white dark:bg-slate-800 p-8 rounded-[3rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors hover:border-amber-500">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">High-Ticket Leads</p>
-                  <p className="text-4xl font-black text-amber-500">{clients.filter(c => c.budgetMax > 5000000).length}</p>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Leads with ₹50L+ Target</p>
                </div>
             </div>
           </div>

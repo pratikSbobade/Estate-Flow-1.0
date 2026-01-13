@@ -1,8 +1,13 @@
 
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { UserRole } from '../types';
 
-const Footer: React.FC = () => {
+interface FooterProps {
+  role?: UserRole;
+}
+
+const Footer: React.FC<FooterProps> = ({ role }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -12,10 +17,14 @@ const Footer: React.FC = () => {
     { label: 'Properties', icon: 'fa-building', path: '/properties' },
   ];
 
+  if (role === UserRole.SUPER_ADMIN) {
+    navItems.push({ label: 'Admin', icon: 'fa-lock', path: '/admin' });
+  }
+
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-xl text-slate-800 px-6 py-3 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.15)] z-50 flex items-center gap-4 border border-white/40">
+    <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-xl text-slate-800 px-6 py-3 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.15)] z-50 flex items-center gap-4 border border-white/40 transition-all duration-300">
       {navItems.map((item) => (
         <button
           key={item.path}
