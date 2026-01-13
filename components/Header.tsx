@@ -18,7 +18,8 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isMainPage = ['/clients', '/visits', '/properties', '/admin'].includes(location.pathname);
+  // Removed '/admin' from isMainPage to hide the global search bar in the admin module
+  const isMainPage = ['/clients', '/visits', '/properties'].includes(location.pathname);
   const isExpandedAddPage = ['/clients', '/properties', '/visits'].includes(location.pathname);
 
   // Dynamic Visibility checks
