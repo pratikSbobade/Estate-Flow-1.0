@@ -10,7 +10,6 @@ import PropertiesPage from './pages/PropertiesPage';
 import ProfilePage from './pages/ProfilePage';
 import EmiCalculator from './pages/EmiCalculator';
 import AdminPanel from './pages/AdminPanel';
-import AuthPage from './pages/AuthPage';
 import { Client, Property, SiteVisit, ClientType, ClientStatus, UserRole, UserProfile, CustomRole, ResourceType, ResourceAction } from './types';
 import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
@@ -40,9 +39,20 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
 );
 
 const AppContent: React.FC = () => {
+  // Defaulting to Super Admin to remove login screen as requested
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('ef_current_session');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) return JSON.parse(saved);
+    
+    // Default Super Admin profile
+    return { 
+      id: 'S-ADMIN-02', 
+      name: 'Pratik Bobade', 
+      role: 'role_super_admin', 
+      email: 'pratikbobade62@gmail.com', 
+      approvalStatus: 'Approved',
+      createdAt: new Date().toISOString()
+    };
   });
 
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
@@ -74,14 +84,14 @@ const AppContent: React.FC = () => {
       setFullUserRegistry(registry);
     } else {
       const initial: UserProfile[] = [
-        { id: 'ADMIN-01', name: 'Estate Flow Super', role: 'role_admin', email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved', createdAt: new Date().toISOString() },
-        { id: 'ADMIN-02', name: 'Pratik Bobade', role: 'role_admin', email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved', createdAt: new Date().toISOString() }
+        { id: 'S-ADMIN-01', name: 'Estate Flow Super', role: 'role_super_admin', email: 'super@estateflow.com', password: 'admin', approvalStatus: 'Approved', createdAt: new Date().toISOString() },
+        { id: 'S-ADMIN-02', name: 'Pratik Bobade', role: 'role_super_admin', email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved', createdAt: new Date().toISOString() },
+        { id: 'ADMIN-01', name: 'Admin User', role: 'role_admin', email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved', createdAt: new Date().toISOString() }
       ];
       localStorage.setItem('ef_user_registry', JSON.stringify(initial));
       setFullUserRegistry(initial);
     }
     
-    // Sync roles too
     const savedRoles = localStorage.getItem('ef_custom_roles');
     if (savedRoles) setCustomRoles(JSON.parse(savedRoles));
   }, []);
@@ -91,20 +101,22 @@ const AppContent: React.FC = () => {
 
   // Role Checking Helper
   const checkPermission = useCallback((resource: ResourceType, action: ResourceAction = 'Read') => {
-    if (currentUser?.role === 'role_admin') return true;
+    if (currentUser?.role === 'role_super_admin') return true;
     const role = customRoles.find(r => r.id === currentUser?.role);
-    if (!role) return false;
+    if (!role) {
+       if (currentUser?.role === 'role_admin') return true;
+       return false;
+    };
     return role.permissions[resource]?.[action] || false;
   }, [currentUser, customRoles]);
 
   const canReadLeads = useMemo(() => checkPermission('Leads'), [checkPermission]);
   const canReadProperties = useMemo(() => checkPermission('Properties'), [checkPermission]);
   const canReadVisits = useMemo(() => checkPermission('Site Visits'), [checkPermission]);
-  const isAdmin = useMemo(() => currentUser?.role === 'role_admin', [currentUser]);
+  const isAnyAdmin = useMemo(() => ['role_admin', 'role_super_admin'].includes(currentUser?.role || ''), [currentUser]);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!currentUser) return;
       setLoading(true);
       try {
         const [clientsRes, propertiesRes, visitsRes] = await Promise.all([
@@ -126,7 +138,7 @@ const AppContent: React.FC = () => {
     };
 
     fetchData();
-  }, [currentUser, refreshUserRegistry]);
+  }, [refreshUserRegistry]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -139,15 +151,11 @@ const AppContent: React.FC = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
-  const handleLogin = (user: UserProfile) => {
-    setCurrentUser(user);
-    localStorage.setItem('ef_current_session', JSON.stringify(user));
-  };
-
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('ef_current_session');
-    navigate('/');
+    // Refresh to apply default Super Admin or show login if ever reinstated
+    window.location.reload();
   };
 
   const availableLocations = useMemo(() => {
@@ -235,16 +243,12 @@ const AppContent: React.FC = () => {
     }
   };
 
-  if (!currentUser) {
-    return <AuthPage onLoginSuccess={handleLogin} />;
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Verifying Identity...</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Ecosystem...</p>
         </div>
       </div>
     );
@@ -261,7 +265,7 @@ const AppContent: React.FC = () => {
         onFilterClick={() => {}}
         theme={theme}
         onToggleTheme={toggleTheme}
-        role={currentUser.role as string}
+        role={currentUser?.role as string}
         checkPermission={checkPermission}
       />
       
@@ -293,12 +297,12 @@ const AppContent: React.FC = () => {
             )
           } />
 
-          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser.role as string} onSwitchRole={(r) => setCurrentUser(prev => prev ? ({ ...prev, role: r }) : null)} onLogout={handleLogout} />} />
+          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser?.role as string} onSwitchRole={(r) => setCurrentUser(prev => prev ? ({ ...prev, role: r }) : null)} onLogout={handleLogout} />} />
           <Route path="/emi" element={<EmiCalculator />} />
           <Route 
             path="/admin" 
-            element={isAdmin ? (
-              <AdminPanel clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsersToApprove} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} checkPermission={checkPermission} />
+            element={isAnyAdmin ? (
+              <AdminPanel userRole={currentUser?.role as string} clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsersToApprove} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} checkPermission={checkPermission} />
             ) : (
               <Navigate to="/" replace />
             )} 
@@ -307,7 +311,7 @@ const AppContent: React.FC = () => {
         </Routes>
       </main>
 
-      <Footer role={currentUser.role as string} checkPermission={checkPermission} />
+      <Footer role={currentUser?.role as string} checkPermission={checkPermission} />
 
       {isAddClientOpen && <AddClientModal onClose={() => setIsAddClientOpen(false)} onSubmit={handleAddClient} availableLocations={availableLocations} />}
       {isAddPropertyOpen && <AddPropertyModal initialData={editingProperty || undefined} onClose={() => { setIsAddPropertyOpen(false); setEditingProperty(null); }} onSubmit={handleAddProperty} />}
