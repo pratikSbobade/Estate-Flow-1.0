@@ -12,9 +12,10 @@ interface ProfilePageProps {
   visits: SiteVisit[];
   userRole?: UserRole;
   onSwitchRole?: (role: UserRole) => void;
+  onLogout?: () => void;
 }
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, userRole, onSwitchRole }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, userRole, onSwitchRole, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'reports'>('info');
   const [targetRevenue, setTargetRevenue] = useState<number>(() => {
     return Number(localStorage.getItem('agent_target_revenue')) || 10000000; // 1 Cr default
@@ -117,20 +118,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, 
     return alerts;
   }, [targetRevenue, actualRevenue, clients, visits]);
 
-  const leadQualityData = useMemo(() => {
-    const statusCounts = { Hot: 0, Warm: 0, Cold: 0 };
-    clients.forEach(c => {
-      if (c.priority === ClientStatus.HOT) statusCounts.Hot++;
-      else if (c.priority === ClientStatus.WARM) statusCounts.Warm++;
-      else statusCounts.Cold++;
-    });
-    return [
-      { name: 'Hot Leads', value: statusCounts.Hot, color: '#ef4444' },
-      { name: 'Warm Pipeline', value: statusCounts.Warm, color: '#4f46e5' },
-      { name: 'Cold/Nurture', value: statusCounts.Cold, color: '#94a3b8' }
-    ];
-  }, [clients]);
-
   const handleSetTarget = (val: number) => {
     setTargetRevenue(val);
     localStorage.setItem('agent_target_revenue', val.toString());
@@ -159,22 +146,32 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, 
            </span>
         </div>
 
-        {onSwitchRole && (
-          <div className="mt-8 flex gap-2">
-            <button 
-              onClick={() => onSwitchRole(UserRole.AGENT)} 
-              className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.AGENT ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
-            >
-              Agent Role
-            </button>
-            <button 
-              onClick={() => onSwitchRole(UserRole.SUPER_ADMIN)} 
-              className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.SUPER_ADMIN ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
-            >
-              Super Admin Role
-            </button>
-          </div>
-        )}
+        <div className="mt-8 flex flex-wrap justify-center gap-2">
+           {onSwitchRole && (
+             <>
+               <button 
+                 onClick={() => onSwitchRole(UserRole.AGENT)} 
+                 className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.AGENT ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
+               >
+                 Agent Role
+               </button>
+               <button 
+                 onClick={() => onSwitchRole(UserRole.SUPER_ADMIN)} 
+                 className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.SUPER_ADMIN ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
+               >
+                 Super Admin Role
+               </button>
+             </>
+           )}
+           {onLogout && (
+             <button 
+               onClick={onLogout} 
+               className="px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 transition-all border border-red-100 dark:border-red-800"
+             >
+               Sign Out <i className="fas fa-sign-out-alt ml-1"></i>
+             </button>
+           )}
+        </div>
       </div>
 
       <div className="flex bg-white dark:bg-slate-800 p-2 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm gap-2 transition-colors">

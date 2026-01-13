@@ -10,6 +10,7 @@ import PropertiesPage from './pages/PropertiesPage';
 import ProfilePage from './pages/ProfilePage';
 import EmiCalculator from './pages/EmiCalculator';
 import AdminPanel from './pages/AdminPanel';
+import AuthPage from './pages/AuthPage';
 import { Client, Property, SiteVisit, ClientType, ClientStatus, UserRole, UserProfile } from './types';
 import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
@@ -39,6 +40,11 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
 );
 
 const AppContent: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem('ef_current_session');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
@@ -55,20 +61,12 @@ const AppContent: React.FC = () => {
   const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Super Admin state for role management (demo/mock)
-  const [currentUser, setCurrentUser] = useState<UserProfile>({
-    id: 'ADMIN-01',
-    name: 'Estate Flow Super',
-    role: UserRole.SUPER_ADMIN,
-    approvalStatus: 'Approved',
-    email: 'admin@estateflow.com'
-  });
-
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!currentUser) return;
       setLoading(true);
       try {
         const [clientsRes, propertiesRes, visitsRes] = await Promise.all([
@@ -81,33 +79,47 @@ const AppContent: React.FC = () => {
         if (propertiesRes.data) setProperties(propertiesRes.data);
         if (visitsRes.data) setVisits(visitsRes.data);
         
-        // Mock pending users for admin demo
-        setPendingUsers([
-          { id: 'U-002', name: 'Amit Verma', role: UserRole.AGENT, approvalStatus: 'Pending', email: 'amit@ef.com', region: 'Nagpur East' },
-          { id: 'U-003', name: 'Priya Das', role: UserRole.AGENT, approvalStatus: 'Pending', email: 'priya@ef.com', region: 'Nagpur West' }
-        ]);
+        // Sync user registry for admin use
+        const registryJson = localStorage.getItem('ef_user_registry');
+        if (registryJson) {
+          const registry: UserProfile[] = JSON.parse(registryJson);
+          setPendingUsers(registry.filter(u => u.approvalStatus === 'Pending'));
+        } else {
+          // Initialize registry with admin if empty
+          const initial = [{ id: 'ADMIN-01', name: 'Estate Flow Super', role: UserRole.SUPER_ADMIN, email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' }];
+          localStorage.setItem('ef_user_registry', JSON.stringify(initial));
+        }
       } catch (error) {
-        console.error('Error fetching data from Supabase:', error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
-      document.body.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
-      document.body.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  const handleLogin = (user: UserProfile) => {
+    setCurrentUser(user);
+    localStorage.setItem('ef_current_session', JSON.stringify(user));
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('ef_current_session');
+    navigate('/');
+  };
 
   const availableLocations = useMemo(() => {
     const locs = new Set<string>();
@@ -127,35 +139,25 @@ const AppContent: React.FC = () => {
   };
 
   const handleAddVisit = async (newVisit: SiteVisit) => {
-    const visitWithHistory = {
-      ...newVisit,
-      history: [{ status: 'Scheduled', date: new Date().toISOString(), note: 'Visit confirmed via CRM' }]
-    };
-
-    const { error } = await supabase.from('site_visits').insert([visitWithHistory]);
-    
-    if (error) {
-      console.error('Error adding visit:', error.message || error);
-    } else {
-      setVisits(prev => [visitWithHistory, ...prev]);
+    const { error } = await supabase.from('site_visits').insert([newVisit]);
+    if (!error) {
+      setVisits(prev => [newVisit, ...prev]);
       setIsBookVisitOpen(false);
-      setSuccessMessage('Relevant activity is scheduled as per the records.');
+      setSuccessMessage('Visit scheduled successfully.');
     }
   };
 
   const handleUpdateVisit = async (updatedVisit: SiteVisit) => {
     const { id, ...payload } = updatedVisit;
     const { error } = await supabase.from('site_visits').update(payload).eq('id', id);
-
     if (!error) {
       setVisits(prev => prev.map(v => v.id === updatedVisit.id ? updatedVisit : v));
-      setSuccessMessage('Relevant activity is scheduled as per the records.');
+      setSuccessMessage('Visit updated.');
     }
   };
 
   const handleAddProperty = async (newProperty: Property) => {
     const { error } = await supabase.from('properties').upsert([newProperty]);
-
     if (!error) {
       setProperties(prev => {
         const exists = prev.find(p => p.id === newProperty.id);
@@ -163,18 +165,13 @@ const AppContent: React.FC = () => {
         return [newProperty, ...prev];
       });
       setIsAddPropertyOpen(false);
-      setEditingProperty(null);
-      setSuccessMessage('Property details have been updated successfully.');
-      navigate('/properties');
-    } else {
-      console.error('Error saving property:', error.message || error);
+      setSuccessMessage('Property saved.');
     }
   };
 
   const handleAddClient = async (newClient: Client) => {
     const { interactions, ...payload } = newClient;
     const { error } = await supabase.from('clients').upsert([payload]);
-
     if (!error) {
       setClients(prev => {
         const exists = prev.find(c => c.id === newClient.id);
@@ -182,8 +179,7 @@ const AppContent: React.FC = () => {
         return [newClient, ...prev];
       });
       setIsAddClientOpen(false);
-      setSuccessMessage('Client profile has been updated successfully.');
-      navigate('/clients');
+      setSuccessMessage('Client saved.');
     }
   };
 
@@ -191,20 +187,35 @@ const AppContent: React.FC = () => {
     if (type === 'Clients') setClients(prev => [...data, ...prev]);
     if (type === 'Properties') setProperties(prev => [...data, ...prev]);
     if (type === 'Visits') setVisits(prev => [...data, ...prev]);
-    setSuccessMessage(`Bulk import of ${data.length} ${type} completed.`);
+    setSuccessMessage(`Import of ${data.length} records completed.`);
   };
 
   const handleUserApproval = (userId: string, status: 'Approved' | 'Rejected', role?: string) => {
-    setPendingUsers(prev => prev.filter(u => u.id !== userId));
-    setSuccessMessage(`User profile ${status.toLowerCase()} with assigned role.`);
+    const registryJson = localStorage.getItem('ef_user_registry');
+    if (registryJson) {
+      let registry: UserProfile[] = JSON.parse(registryJson);
+      registry = registry.map(u => {
+        if (u.id === userId) {
+          return { ...u, approvalStatus: status, role: role || u.role };
+        }
+        return u;
+      });
+      localStorage.setItem('ef_user_registry', JSON.stringify(registry));
+      setPendingUsers(registry.filter(u => u.approvalStatus === 'Pending'));
+      setSuccessMessage(`User profile ${status.toLowerCase()}.`);
+    }
   };
+
+  if (!currentUser) {
+    return <AuthPage onLoginSuccess={handleLogin} />;
+  }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Initializing Flow...</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Verifying Identity...</p>
         </div>
       </div>
     );
@@ -216,7 +227,7 @@ const AppContent: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onAddClick={handleGlobalAdd}
-        onFilterClick={() => alert('Filter options opened')}
+        onFilterClick={() => {}}
         theme={theme}
         onToggleTheme={toggleTheme}
         role={currentUser.role as UserRole}
@@ -228,7 +239,7 @@ const AppContent: React.FC = () => {
           <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} />} />
           <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} />} />
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} />} />
-          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser.role as UserRole} onSwitchRole={(r) => setCurrentUser(prev => ({ ...prev, role: r }))} />} />
+          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser.role as UserRole} onSwitchRole={(r) => setCurrentUser(prev => prev ? ({ ...prev, role: r }) : null)} onLogout={handleLogout} />} />
           <Route path="/emi" element={<EmiCalculator />} />
           <Route path="/admin" element={<AdminPanel clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsers} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} />} />
         </Routes>
@@ -236,37 +247,10 @@ const AppContent: React.FC = () => {
 
       <Footer role={currentUser.role as UserRole} />
 
-      {isAddClientOpen && (
-        <AddClientModal 
-          onClose={() => setIsAddClientOpen(false)} 
-          onSubmit={handleAddClient} 
-          availableLocations={availableLocations}
-        />
-      )}
-
-      {isAddPropertyOpen && (
-        <AddPropertyModal 
-          initialData={editingProperty || undefined}
-          onClose={() => { setIsAddPropertyOpen(false); setEditingProperty(null); }} 
-          onSubmit={handleAddProperty} 
-        />
-      )}
-
-      {isBookVisitOpen && (
-        <BookVisitModal 
-          clients={clients}
-          properties={properties}
-          onClose={() => setIsBookVisitOpen(false)}
-          onSubmit={handleAddVisit}
-        />
-      )}
-
-      {successMessage && (
-        <SuccessPopup 
-          message={successMessage} 
-          onClose={() => setSuccessMessage(null)} 
-        />
-      )}
+      {isAddClientOpen && <AddClientModal onClose={() => setIsAddClientOpen(false)} onSubmit={handleAddClient} availableLocations={availableLocations} />}
+      {isAddPropertyOpen && <AddPropertyModal initialData={editingProperty || undefined} onClose={() => { setIsAddPropertyOpen(false); setEditingProperty(null); }} onSubmit={handleAddProperty} />}
+      {isBookVisitOpen && <BookVisitModal clients={clients} properties={properties} onClose={() => setIsBookVisitOpen(false)} onSubmit={handleAddVisit} />}
+      {successMessage && <SuccessPopup message={successMessage} onClose={() => setSuccessMessage(null)} />}
     </div>
   );
 };

@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions } from '../types';
+import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions, UserRole } from '../types';
 
 interface AdminPanelProps {
   clients: Client[];
@@ -13,7 +14,6 @@ interface AdminPanelProps {
 const RESOURCES: ResourceType[] = ['Leads', 'Properties', 'Site Visits', 'Users', 'Reports', 'Admin', 'WhatsApp'];
 const ACTIONS: ResourceAction[] = ['Read', 'Add', 'Edit', 'Delete', 'Assign'];
 
-// Fix: Properly type the default permissions helper to ensure all resources have full action objects
 const DEFAULT_PERMISSIONS = (): RolePermissions => {
   const perms: RolePermissions = {};
   RESOURCES.forEach(r => {
@@ -34,6 +34,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'approvals' | 'csv' | 'templates' | 'roles'>('approvals');
   
+  // Create User State
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ name: '', email: '', password: '', role: 'role_agent' });
+
   // Custom Roles State
   const [customRoles, setCustomRoles] = useState<CustomRole[]>(() => {
     const saved = localStorage.getItem('ef_custom_roles');
@@ -65,6 +69,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   // Approval State
   const [userRoleMap, setUserRoleMap] = useState<Record<string, string>>({});
 
+  const handleManualUserCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    const registryJson = localStorage.getItem('ef_user_registry');
+    const registry: UserProfile[] = registryJson ? JSON.parse(registryJson) : [];
+    
+    const newUser: UserProfile = {
+      id: `U-${Math.random().toString(36).substr(2, 9)}`,
+      name: newUserForm.name,
+      email: newUserForm.email,
+      password: newUserForm.password,
+      role: newUserForm.role,
+      approvalStatus: 'Approved',
+      createdAt: new Date().toISOString()
+    };
+
+    localStorage.setItem('ef_user_registry', JSON.stringify([...registry, newUser]));
+    setIsCreatingUser(false);
+    setNewUserForm({ name: '', email: '', password: '', role: 'role_agent' });
+  };
+
   const handleSaveRole = () => {
     if (!newRoleData.name) return;
     const role: CustomRole = {
@@ -88,7 +112,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const togglePermission = (resource: ResourceType, action: ResourceAction) => {
     setNewRoleData(prev => {
-      // Fix: Ensure we have a valid permissions object before spreading
       const currentPermissions = (prev.permissions || DEFAULT_PERMISSIONS()) as RolePermissions;
       const resourcePermissions = currentPermissions[resource] || { Read: false, Add: false, Edit: false, Delete: false, Assign: false };
       
@@ -167,7 +190,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Management, Compliance & Scaling</p>
         </div>
         <div className="flex bg-white dark:bg-slate-800 p-1.5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 transition-colors overflow-x-auto no-scrollbar">
-          <button onClick={() => setActiveTab('approvals')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'approvals' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Approvals</button>
+          <button onClick={() => setActiveTab('approvals')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'approvals' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Approvals & Users</button>
           <button onClick={() => setActiveTab('roles')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'roles' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Roles & Access</button>
           <button onClick={() => setActiveTab('csv')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'csv' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>CSV Upload</button>
           <button onClick={() => setActiveTab('templates')} className={`whitespace-nowrap px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'templates' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>WA Templates</button>
@@ -175,7 +198,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
 
       {activeTab === 'approvals' && (
-        <div className="space-y-6">
+        <div className="space-y-8">
+          <div className="flex items-center justify-between">
+             <div>
+                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">User Orchestration</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Approve signups or add team members manually</p>
+             </div>
+             <button 
+               onClick={() => setIsCreatingUser(true)}
+               className="px-8 py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest"
+             >
+               + Create Team Access
+             </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {pendingUsers.map(user => (
               <div key={user.id} className="card-neo p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 transition-colors">
@@ -185,13 +221,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase truncate leading-tight">{user.name}</h3>
-                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{user.region} • Requesting Join</p>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{user.region || 'Remote'} • Signup Pending</p>
                   </div>
                 </div>
                 
                 <div className="space-y-4 mb-8">
                   <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Contact Email</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Professional Email</p>
                     <p className="text-[10px] font-bold text-slate-600 dark:text-slate-300 truncate">{user.email}</p>
                   </div>
                   
@@ -208,7 +244,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           <option key={r.id} value={r.id}>{r.name}</option>
                         ))}
                       </select>
-                      <i className="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
                     </div>
                   </div>
                 </div>
@@ -228,10 +263,50 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             {pendingUsers.length === 0 && (
               <div className="col-span-full py-24 text-center border-4 border-dashed border-slate-100 dark:border-slate-800 rounded-[3rem]">
                 <i className="fas fa-check-double text-slate-200 text-5xl mb-4"></i>
-                <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No pending profile approvals</p>
+                <p className="text-xs font-black text-slate-300 uppercase tracking-widest">Team registry is fully validated</p>
               </div>
             )}
           </div>
+
+          {isCreatingUser && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-6">
+              <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+                <div className="p-8 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Add Team Member</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Instant activation bypasses approval</p>
+                  </div>
+                  <button onClick={() => setIsCreatingUser(false)} className="w-10 h-10 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400"><i className="fas fa-times"></i></button>
+                </div>
+                <form onSubmit={handleManualUserCreate} className="p-8 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                    <input required value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-xs font-bold dark:text-white outline-none" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Email ID</label>
+                    <input type="email" required value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-xs font-bold dark:text-white outline-none" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Temporary Access Key</label>
+                    <input type="password" required value={newUserForm.password} onChange={e => setNewUserForm({...newUserForm, password: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-xs font-bold dark:text-white outline-none" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Designated Role</label>
+                    <select value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 rounded-2xl text-[10px] font-black uppercase dark:text-white outline-none">
+                       {customRoles.map(r => (
+                         <option key={r.id} value={r.id}>{r.name}</option>
+                       ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button type="button" onClick={() => setIsCreatingUser(false)} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase">Discard</button>
+                    <button type="submit" className="flex-[2] py-4 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase">Create & Activate</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -369,7 +444,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                        <td className="p-6">
                                           <button 
                                              onClick={() => {
-                                                // Fix: Properly type the accumulator for Grant All functionality
                                                 const allActions = ACTIONS.reduce((acc, a) => ({...acc, [a]: true}), {} as Record<ResourceAction, boolean>);
                                                 setNewRoleData(prev => ({
                                                    ...prev,
@@ -441,7 +515,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {activeTab === 'templates' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-          {/* Create Template */}
           <div className="card-neo p-8 rounded-[3rem] h-fit lg:sticky lg:top-36 transition-colors">
              <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase mb-8">Craft New Template</h3>
              <div className="space-y-6">

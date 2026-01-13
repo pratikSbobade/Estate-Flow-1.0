@@ -45,11 +45,13 @@ export interface WhatsAppTemplate {
 export interface UserProfile {
   id: string;
   name: string;
-  role: UserRole | string; // Can be a system role or a custom role ID
+  role: UserRole | string;
   approvalStatus: 'Pending' | 'Approved' | 'Rejected';
   email: string;
+  password?: string; // Simulated for mock auth
   photo?: string;
   region?: string;
+  createdAt?: string;
 }
 
 export interface ClientInteraction {
