@@ -112,6 +112,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     ];
   });
 
+  // Template Management State
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
+  const [newTemplate, setNewTemplate] = useState<Partial<WhatsAppTemplate>>({
+    category: 'Clients',
+    name: '',
+    message: ''
+  });
+  const templateTextAreaRef = useRef<HTMLTextAreaElement>(null);
+
   // CSV Import Workflow States
   const [importStep, setImportStep] = useState<1 | 2 | 3>(1);
   const [importType, setImportType] = useState<'Clients' | 'Properties' | 'Visits'>('Clients');
@@ -121,7 +130,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [validatedData, setValidatedData] = useState<{data: any, errors: string[]}[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const registryJson = localStorage.getItem('ef_user_registry');
@@ -224,6 +232,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setValidatedData([]);
   };
 
+  // WhatsApp Template Logic
+  const handleInsertField = (field: string) => {
+    const placeholder = `{${field}}`;
+    const textarea = templateTextAreaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = newTemplate.message || '';
+    const updatedText = text.substring(0, start) + placeholder + text.substring(end);
+    
+    setNewTemplate({ ...newTemplate, message: updatedText });
+    
+    // Reset focus and cursor after state update
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + placeholder.length, start + placeholder.length);
+    }, 0);
+  };
+
+  const handleSaveTemplate = () => {
+    if (!newTemplate.name || !newTemplate.message) return;
+    const template: WhatsAppTemplate = {
+      ...newTemplate as WhatsAppTemplate,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    const updated = [...templates, template];
+    setTemplates(updated);
+    localStorage.setItem('ef_wa_templates', JSON.stringify(updated));
+    setIsCreatingTemplate(false);
+    setNewTemplate({ category: 'Clients', name: '', message: '' });
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    const updated = templates.filter(t => t.id !== id);
+    setTemplates(updated);
+    localStorage.setItem('ef_wa_templates', JSON.stringify(updated));
+  };
+
   return (
     <div className="space-y-8 animate-slide-up pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -294,7 +341,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                               <select 
                                 value={mapping[field.key] || ''} 
                                 onChange={e => setMapping({...mapping, [field.key]: e.target.value})}
-                                className="w-full sm:w-64 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 transition-all"
+                                className="w-full sm:w-64 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 transition-all"
                               >
                                  <option value="">-- Ignore Field --</option>
                                  {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -423,19 +470,87 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {(activeTab === 'templates' && canSeeTemplates) && (
         <div className="space-y-6">
-           <div className="flex justify-between items-center px-2">
-             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Standard Interaction Models</h4>
-             <span className="text-[9px] font-black text-indigo-600 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-lg">{templates.length} Active</span>
-           </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             {templates.map(tpl => (
-               <div key={tpl.id} className="card-neo p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
-                  <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800 mb-2 inline-block">{tpl.category}</span>
-                  <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase leading-tight mb-2">{tpl.name}</h4>
-                  <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 italic line-clamp-3 leading-relaxed">"{tpl.message}"</p>
-               </div>
-             ))}
-           </div>
+           {!isCreatingTemplate ? (
+             <div className="space-y-8">
+                <div className="flex justify-between items-center px-2">
+                  <div>
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Standard Interaction Models</h4>
+                    <p className="text-[9px] font-black text-indigo-600 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-lg mt-1 inline-block">{templates.length} Active</p>
+                  </div>
+                  <button onClick={() => setIsCreatingTemplate(true)} className="px-6 py-3 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">
+                    <i className="fas fa-plus mr-2"></i> Create New Template
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {templates.map(tpl => (
+                    <div key={tpl.id} className="card-neo p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col justify-between group">
+                       <div>
+                         <div className="flex justify-between items-start mb-2">
+                           <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800">{tpl.category}</span>
+                           <button onClick={() => handleDeleteTemplate(tpl.id)} className="w-8 h-8 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"><i className="fas fa-trash-alt text-[10px]"></i></button>
+                         </div>
+                         <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase leading-tight mb-2">{tpl.name}</h4>
+                         <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 italic line-clamp-4 leading-relaxed">"{tpl.message}"</p>
+                       </div>
+                    </div>
+                  ))}
+                </div>
+             </div>
+           ) : (
+             <div className="max-w-2xl mx-auto space-y-8 animate-slide-up">
+                <div className="card-neo p-10 rounded-[3.5rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 space-y-8">
+                   <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Construct WA Template</h4>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Design once, broadcast anywhere</p>
+                      </div>
+                      <button onClick={() => setIsCreatingTemplate(false)} className="w-10 h-10 bg-slate-50 dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400"><i className="fas fa-times"></i></button>
+                   </div>
+
+                   <div className="space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Template Name</label>
+                           <input value={newTemplate.name} onChange={e => setNewTemplate({...newTemplate, name: e.target.value})} placeholder="e.g. Property Showcase" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[1.5rem] text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Context Category</label>
+                           <select value={newTemplate.category} onChange={e => setNewTemplate({...newTemplate, category: e.target.value as any})} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[1.5rem] text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all">
+                              {Object.keys(CATEGORY_FIELDS).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                           </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                         <div className="flex justify-between items-center px-1">
+                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dynamic Body</label>
+                           <span className="text-[8px] font-black text-indigo-400 uppercase">Click fields to insert placeholder</span>
+                         </div>
+                         <div className="flex flex-wrap gap-2 p-4 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-[2rem] border border-indigo-50 dark:border-indigo-900/30">
+                            {(CATEGORY_FIELDS[newTemplate.category || 'Clients'] || []).map(field => (
+                              <button key={field} onClick={() => handleInsertField(field)} className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900/50 rounded-xl text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                                <i className="fas fa-plus-circle mr-1"></i> {field}
+                              </button>
+                            ))}
+                         </div>
+                         <textarea 
+                           ref={templateTextAreaRef}
+                           value={newTemplate.message} 
+                           onChange={e => setNewTemplate({...newTemplate, message: e.target.value})}
+                           rows={6} 
+                           className="w-full p-6 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] text-xs font-medium dark:text-white outline-none focus:border-indigo-600 transition-all leading-relaxed" 
+                           placeholder="Draft your message here... Use {firstName} or click buttons above to inject data points."
+                         ></textarea>
+                      </div>
+                   </div>
+
+                   <div className="flex gap-4">
+                      <button onClick={() => setIsCreatingTemplate(false)} className="flex-1 py-5 btn-3d btn-3d-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest">Discard</button>
+                      <button onClick={handleSaveTemplate} disabled={!newTemplate.name || !newTemplate.message} className={`flex-[2] py-5 btn-3d rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-xl ${newTemplate.name && newTemplate.message ? 'btn-3d-indigo text-white shadow-indigo-100' : 'bg-slate-100 text-slate-300'}`}>Save Interaction Model</button>
+                   </div>
+                </div>
+             </div>
+           )}
         </div>
       )}
     </div>
@@ -443,3 +558,4 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 };
 
 export default AdminPanel;
+

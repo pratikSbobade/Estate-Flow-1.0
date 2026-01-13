@@ -1,53 +1,75 @@
 
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { UserRole, ResourceType, ResourceAction } from '../types';
+import { ResourceType, ResourceAction } from '../types';
 
 interface FooterProps {
   role?: string;
   checkPermission?: (resource: ResourceType, action?: ResourceAction) => boolean;
 }
 
-const Footer: React.FC<FooterProps> = ({ role, checkPermission }) => {
+const Footer: React.FC<FooterProps> = ({ role }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const allItems = [
-    { label: 'Clients', icon: 'fa-users', path: '/clients', resource: 'Leads' as ResourceType },
-    { label: 'Visits', icon: 'fa-calendar-check', path: '/visits', resource: 'Site Visits' as ResourceType },
-    { label: 'Properties', icon: 'fa-building', path: '/properties', resource: 'Properties' as ResourceType },
+  // Fixed core navigation items (Removed Home as it's in the logo)
+  const navItems = [
+    { label: 'Clients', icon: 'fa-users', path: '/clients' },
+    { label: 'Properties', icon: 'fa-building', path: '/properties' },
+    { label: 'Visits', icon: 'fa-calendar-check', path: '/visits' },
   ];
 
-  // Filter items based on Read permission
-  const navItems = allItems.filter(item => 
-    checkPermission ? checkPermission(item.resource) : true
-  );
-
-  if (role === 'role_admin') {
-    navItems.push({ label: 'Admin', icon: 'fa-lock', path: '/admin', resource: 'Admin' as ResourceType });
-  }
-
+  const isAdmin = ['role_admin', 'role_super_admin'].includes(role || '');
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-xl text-slate-800 px-6 py-3 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.15)] z-50 flex items-center gap-4 border border-white/40 transition-all duration-300">
-      {navItems.map((item) => (
-        <button
-          key={item.path}
-          onClick={() => navigate(item.path)}
-          className={`btn-3d px-6 py-2 rounded-2xl flex flex-col items-center gap-1 transition-all duration-300 ${
-            isActive(item.path) ? 'btn-3d-indigo text-white' : 'btn-3d-white'
-          }`}
-        >
-          <div className="relative">
-            <i className={`fas ${item.icon} text-lg`}></i>
-            {isActive(item.path) && (
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full border-2 border-indigo-600"></span>
-            )}
-          </div>
-          <span className="text-[9px] font-black tracking-widest uppercase">{item.label}</span>
-        </button>
-      ))}
+    <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-lg bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl px-4 py-3 rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] z-[100] border border-white/40 dark:border-slate-700/50 transition-all duration-300">
+      <div className="flex items-center justify-between gap-1">
+        {navItems.map((item) => (
+          <button
+            key={item.path}
+            onClick={() => navigate(item.path)}
+            className={`flex-1 flex flex-col items-center gap-1.5 py-1 px-1 rounded-2xl transition-all duration-300 group ${
+              isActive(item.path) 
+                ? 'text-indigo-600 dark:text-indigo-400' 
+                : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+            }`}
+          >
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+              isActive(item.path) 
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none scale-105' 
+                : 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-slate-700/50'
+            }`}>
+              <i className={`fas ${item.icon} text-lg`}></i>
+            </div>
+            <span className={`text-[8px] font-black uppercase tracking-[0.15em] transition-opacity duration-300 ${isActive(item.path) ? 'opacity-100' : 'opacity-60'}`}>
+              {item.label}
+            </span>
+          </button>
+        ))}
+        
+        {isAdmin && (
+          <button
+            onClick={() => navigate('/admin')}
+            className={`flex-1 flex flex-col items-center gap-1.5 py-1 px-1 rounded-2xl transition-all duration-300 group ${
+              isActive('/admin') 
+                ? 'text-indigo-600 dark:text-indigo-400' 
+                : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+            }`}
+          >
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+              isActive('/admin') 
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none scale-105' 
+                : 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-slate-700/50'
+            }`}>
+              <i className="fas fa-shield-halved text-lg"></i>
+            </div>
+            <span className={`text-[8px] font-black uppercase tracking-[0.15em] transition-opacity duration-300 ${isActive('/admin') ? 'opacity-100' : 'opacity-60'}`}>
+              Admin
+            </span>
+          </button>
+        )}
+      </div>
     </footer>
   );
 };
