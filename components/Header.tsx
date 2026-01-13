@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { UserRole } from '../types';
+import { UserRole, ResourceType, ResourceAction } from '../types';
 
 interface HeaderProps {
   searchQuery: string;
@@ -10,15 +10,21 @@ interface HeaderProps {
   onFilterClick: () => void;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
-  role?: UserRole;
+  role?: string;
+  checkPermission?: (resource: ResourceType, action?: ResourceAction) => boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick, onFilterClick, theme, onToggleTheme, role }) => {
+const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick, onFilterClick, theme, onToggleTheme, role, checkPermission }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
   const isMainPage = ['/clients', '/visits', '/properties', '/admin'].includes(location.pathname);
   const isExpandedAddPage = ['/clients', '/properties', '/visits'].includes(location.pathname);
+
+  // Dynamic Visibility checks
+  const canSeeLeads = checkPermission ? checkPermission('Leads') : true;
+  const canSeeProperties = checkPermission ? checkPermission('Properties') : true;
+  const canSeeVisits = checkPermission ? checkPermission('Site Visits') : true;
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -48,7 +54,7 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {role === UserRole.SUPER_ADMIN && (
+          {role === 'role_admin' && (
             <button 
               onClick={() => navigate('/admin')}
               className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${

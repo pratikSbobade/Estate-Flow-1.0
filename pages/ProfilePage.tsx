@@ -10,8 +10,8 @@ interface ProfilePageProps {
   clients: Client[];
   properties: Property[];
   visits: SiteVisit[];
-  userRole?: UserRole;
-  onSwitchRole?: (role: UserRole) => void;
+  userRole?: string;
+  onSwitchRole?: (role: string) => void;
   onLogout?: () => void;
 }
 
@@ -23,7 +23,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, 
 
   const user = {
     name: 'Rahul Singh',
-    role: userRole === UserRole.SUPER_ADMIN ? 'Super Admin' : 'Senior Sales Agent',
+    role: userRole === 'role_admin' ? 'Super Admin' : 'Senior Sales Agent',
     id: 'AGENT-99',
     region: 'South Nagpur',
     reraId: 'NAG/A/2023/11023',
@@ -150,14 +150,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, 
            {onSwitchRole && (
              <>
                <button 
-                 onClick={() => onSwitchRole(UserRole.AGENT)} 
-                 className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.AGENT ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
+                 onClick={() => onSwitchRole('role_agent')} 
+                 className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === 'role_agent' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
                >
                  Agent Role
                </button>
                <button 
-                 onClick={() => onSwitchRole(UserRole.SUPER_ADMIN)} 
-                 className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.SUPER_ADMIN ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
+                 onClick={() => onSwitchRole('role_admin')} 
+                 className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === 'role_admin' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}
                >
                  Super Admin Role
                </button>

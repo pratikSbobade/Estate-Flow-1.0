@@ -23,8 +23,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
     // Get mock users from storage
     const usersJson = localStorage.getItem('ef_user_registry');
     const users: UserProfile[] = usersJson ? JSON.parse(usersJson) : [
-      { id: 'ADMIN-01', name: 'Estate Flow Super', role: UserRole.SUPER_ADMIN, email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' },
-      { id: 'ADMIN-02', name: 'Pratik Bobade', role: UserRole.SUPER_ADMIN, email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved' }
+      { id: 'ADMIN-01', name: 'Estate Flow Super', role: 'role_admin', email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved' },
+      { id: 'ADMIN-02', name: 'Pratik Bobade', role: 'role_admin', email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved' }
     ];
 
     if (mode === 'login') {
@@ -35,6 +35,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         setIsPending(true);
       } else if (user.approvalStatus === 'Rejected') {
         setError('Your access request was declined. Contact Super Admin.');
+      } else if (user.approvalStatus === 'Deactivated') {
+        setError('Your account has been deactivated. Contact Admin.');
       } else {
         onLoginSuccess(user);
       }
@@ -51,7 +53,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         email,
         password,
         region,
-        role: UserRole.AGENT,
+        role: 'role_agent',
         approvalStatus: 'Pending',
         createdAt: new Date().toISOString()
       };

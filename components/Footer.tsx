@@ -1,24 +1,30 @@
 
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { UserRole } from '../types';
+import { UserRole, ResourceType, ResourceAction } from '../types';
 
 interface FooterProps {
-  role?: UserRole;
+  role?: string;
+  checkPermission?: (resource: ResourceType, action?: ResourceAction) => boolean;
 }
 
-const Footer: React.FC<FooterProps> = ({ role }) => {
+const Footer: React.FC<FooterProps> = ({ role, checkPermission }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const navItems = [
-    { label: 'Clients', icon: 'fa-users', path: '/clients' },
-    { label: 'Visits', icon: 'fa-calendar-check', path: '/visits' },
-    { label: 'Properties', icon: 'fa-building', path: '/properties' },
+  const allItems = [
+    { label: 'Clients', icon: 'fa-users', path: '/clients', resource: 'Leads' as ResourceType },
+    { label: 'Visits', icon: 'fa-calendar-check', path: '/visits', resource: 'Site Visits' as ResourceType },
+    { label: 'Properties', icon: 'fa-building', path: '/properties', resource: 'Properties' as ResourceType },
   ];
 
-  if (role === UserRole.SUPER_ADMIN) {
-    navItems.push({ label: 'Admin', icon: 'fa-lock', path: '/admin' });
+  // Filter items based on Read permission
+  const navItems = allItems.filter(item => 
+    checkPermission ? checkPermission(item.resource) : true
+  );
+
+  if (role === 'role_admin') {
+    navItems.push({ label: 'Admin', icon: 'fa-lock', path: '/admin', resource: 'Admin' as ResourceType });
   }
 
   const isActive = (path: string) => location.pathname === path;

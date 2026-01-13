@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Dashboard from './pages/Dashboard';
@@ -11,7 +11,7 @@ import ProfilePage from './pages/ProfilePage';
 import EmiCalculator from './pages/EmiCalculator';
 import AdminPanel from './pages/AdminPanel';
 import AuthPage from './pages/AuthPage';
-import { Client, Property, SiteVisit, ClientType, ClientStatus, UserRole, UserProfile } from './types';
+import { Client, Property, SiteVisit, ClientType, ClientStatus, UserRole, UserProfile, CustomRole, ResourceType, ResourceAction } from './types';
 import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
 import BookVisitModal from './components/BookVisitModal';
@@ -61,7 +61,11 @@ const AppContent: React.FC = () => {
   const [fullUserRegistry, setFullUserRegistry] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const pendingUsers = useMemo(() => fullUserRegistry.filter(u => u.approvalStatus === 'Pending'), [fullUserRegistry]);
+  // Load Custom Roles for Permission Checking
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>(() => {
+    const saved = localStorage.getItem('ef_custom_roles');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const refreshUserRegistry = useCallback(() => {
     const registryJson = localStorage.getItem('ef_user_registry');
@@ -69,17 +73,34 @@ const AppContent: React.FC = () => {
       const registry: UserProfile[] = JSON.parse(registryJson);
       setFullUserRegistry(registry);
     } else {
-      const initial = [
+      const initial: UserProfile[] = [
         { id: 'ADMIN-01', name: 'Estate Flow Super', role: 'role_admin', email: 'admin@estateflow.com', password: 'admin', approvalStatus: 'Approved', createdAt: new Date().toISOString() },
         { id: 'ADMIN-02', name: 'Pratik Bobade', role: 'role_admin', email: 'pratikbobade62@gmail.com', password: '12345', approvalStatus: 'Approved', createdAt: new Date().toISOString() }
       ];
       localStorage.setItem('ef_user_registry', JSON.stringify(initial));
       setFullUserRegistry(initial);
     }
+    
+    // Sync roles too
+    const savedRoles = localStorage.getItem('ef_custom_roles');
+    if (savedRoles) setCustomRoles(JSON.parse(savedRoles));
   }, []);
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Role Checking Helper
+  const checkPermission = useCallback((resource: ResourceType, action: ResourceAction = 'Read') => {
+    if (currentUser?.role === 'role_admin') return true;
+    const role = customRoles.find(r => r.id === currentUser?.role);
+    if (!role) return false;
+    return role.permissions[resource]?.[action] || false;
+  }, [currentUser, customRoles]);
+
+  const canReadLeads = useMemo(() => checkPermission('Leads'), [checkPermission]);
+  const canReadProperties = useMemo(() => checkPermission('Properties'), [checkPermission]);
+  const canReadVisits = useMemo(() => checkPermission('Site Visits'), [checkPermission]);
+  const isAdmin = useMemo(() => currentUser?.role === 'role_admin', [currentUser]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -229,6 +250,8 @@ const AppContent: React.FC = () => {
     );
   }
 
+  const pendingUsersToApprove = fullUserRegistry.filter(u => u.approvalStatus === 'Pending');
+
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-300">
       <Header 
@@ -238,22 +261,53 @@ const AppContent: React.FC = () => {
         onFilterClick={() => {}}
         theme={theme}
         onToggleTheme={toggleTheme}
-        role={currentUser.role as UserRole}
+        role={currentUser.role as string}
+        checkPermission={checkPermission}
       />
       
       <main className={`flex-grow ${['/clients', '/visits', '/properties', '/admin'].includes(location.pathname) ? 'pt-32' : 'pt-20'} pb-28 px-4 max-w-7xl mx-auto w-full`}>
         <Routes>
           <Route path="/" element={<Dashboard clients={clients} properties={properties} visits={visits} />} />
-          <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} />} />
-          <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} />} />
-          <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} />} />
-          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser.role as UserRole} onSwitchRole={(r) => setCurrentUser(prev => prev ? ({ ...prev, role: r }) : null)} onLogout={handleLogout} />} />
+          
+          <Route path="/clients" element={
+            canReadLeads ? (
+              <ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } />
+
+          <Route path="/visits" element={
+            canReadVisits ? (
+              <VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } />
+
+          <Route path="/properties" element={
+            canReadProperties ? (
+              <PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } />
+
+          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser.role as string} onSwitchRole={(r) => setCurrentUser(prev => prev ? ({ ...prev, role: r }) : null)} onLogout={handleLogout} />} />
           <Route path="/emi" element={<EmiCalculator />} />
-          <Route path="/admin" element={<AdminPanel clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsers} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} />} />
+          <Route 
+            path="/admin" 
+            element={isAdmin ? (
+              <AdminPanel clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsersToApprove} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} />
+            ) : (
+              <Navigate to="/" replace />
+            )} 
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
-      <Footer role={currentUser.role as UserRole} />
+      <Footer role={currentUser.role as string} checkPermission={checkPermission} />
 
       {isAddClientOpen && <AddClientModal onClose={() => setIsAddClientOpen(false)} onSubmit={handleAddClient} availableLocations={availableLocations} />}
       {isAddPropertyOpen && <AddPropertyModal initialData={editingProperty || undefined} onClose={() => { setIsAddPropertyOpen(false); setEditingProperty(null); }} onSubmit={handleAddProperty} />}
