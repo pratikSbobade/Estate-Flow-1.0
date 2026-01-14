@@ -10,6 +10,7 @@ import PropertiesPage from './pages/PropertiesPage';
 import ProfilePage from './pages/ProfilePage';
 import EmiCalculator from './pages/EmiCalculator';
 import AdminPanel from './pages/AdminPanel';
+import AuthPage from './pages/AuthPage';
 import { Client, Property, SiteVisit, ClientType, ClientStatus, UserRole, UserProfile, CustomRole, ResourceType, ResourceAction } from './types';
 import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
@@ -39,20 +40,10 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
 );
 
 const AppContent: React.FC = () => {
-  // Defaulting to Super Admin to remove login screen as requested
+  // Authentication State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('ef_current_session');
-    if (saved) return JSON.parse(saved);
-    
-    // Default Super Admin profile
-    return { 
-      id: 'S-ADMIN-02', 
-      name: 'Pratik Bobade', 
-      role: 'role_super_admin', 
-      email: 'pratikbobade62@gmail.com', 
-      approvalStatus: 'Approved',
-      createdAt: new Date().toISOString()
-    };
+    return saved ? JSON.parse(saved) : null;
   });
 
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
@@ -151,20 +142,16 @@ const AppContent: React.FC = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
+  const handleLoginSuccess = (user: UserProfile) => {
+    setCurrentUser(user);
+    localStorage.setItem('ef_current_session', JSON.stringify(user));
+  };
+
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('ef_current_session');
-    // Refresh to apply default Super Admin or show login if ever reinstated
     window.location.reload();
   };
-
-  const availableLocations = useMemo(() => {
-    const locs = new Set<string>();
-    properties.forEach(p => {
-      if (p.location?.area) locs.add(p.location.area);
-    });
-    return Array.from(locs).sort();
-  }, [properties]);
 
   const handleGlobalAdd = () => {
     switch (location.pathname) {
@@ -254,6 +241,11 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Mandatory Login Screen
+  if (!currentUser) {
+    return <AuthPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
   const pendingUsersToApprove = fullUserRegistry.filter(u => u.approvalStatus === 'Pending');
 
   return (
@@ -272,48 +264,19 @@ const AppContent: React.FC = () => {
       <main className={`flex-grow ${['/clients', '/visits', '/properties', '/admin'].includes(location.pathname) ? 'pt-32' : 'pt-20'} pb-28 px-4 max-w-7xl mx-auto w-full`}>
         <Routes>
           <Route path="/" element={<Dashboard clients={clients} properties={properties} visits={visits} />} />
-          
-          <Route path="/clients" element={
-            canReadLeads ? (
-              <ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} availableLocations={availableLocations} checkPermission={checkPermission} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          } />
-
-          <Route path="/visits" element={
-            canReadVisits ? (
-              <VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} checkPermission={checkPermission} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          } />
-
-          <Route path="/properties" element={
-            canReadProperties ? (
-              <PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          } />
-
-          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} userRole={currentUser?.role as string} onSwitchRole={(r) => setCurrentUser(prev => prev ? ({ ...prev, role: r }) : null)} onLogout={handleLogout} />} />
+          <Route path="/clients" element={canReadLeads ? <ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} checkPermission={checkPermission} /> : <Navigate to="/" replace />} />
+          <Route path="/visits" element={canReadVisits ? <VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} checkPermission={checkPermission} /> : <Navigate to="/" replace />} />
+          <Route path="/properties" element={canReadProperties ? <PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(null); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} /> : <Navigate to="/" replace />} />
+          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} onUpdateClient={handleAddClient} userRole={currentUser?.role as string} onSwitchRole={(r) => setCurrentUser(prev => prev ? ({ ...prev, role: r }) : null)} onLogout={handleLogout} />} />
           <Route path="/emi" element={<EmiCalculator />} />
-          <Route 
-            path="/admin" 
-            element={isAnyAdmin ? (
-              <AdminPanel userRole={currentUser?.role as string} clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsersToApprove} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} checkPermission={checkPermission} />
-            ) : (
-              <Navigate to="/" replace />
-            )} 
-          />
+          <Route path="/admin" element={isAnyAdmin ? <AdminPanel userRole={currentUser?.role as string} clients={clients} properties={properties} visits={visits} pendingUsers={pendingUsersToApprove} onBulkImport={handleBulkImport} onApproveUser={handleUserApproval} checkPermission={checkPermission} /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
       <Footer role={currentUser?.role as string} checkPermission={checkPermission} />
 
-      {isAddClientOpen && <AddClientModal onClose={() => setIsAddClientOpen(false)} onSubmit={handleAddClient} availableLocations={availableLocations} />}
+      {isAddClientOpen && <AddClientModal onClose={() => setIsAddClientOpen(false)} onSubmit={handleAddClient} />}
       {isAddPropertyOpen && <AddPropertyModal initialData={editingProperty || undefined} onClose={() => { setIsAddPropertyOpen(false); setEditingProperty(null); }} onSubmit={handleAddProperty} />}
       {isBookVisitOpen && <BookVisitModal clients={clients} properties={properties} onClose={() => setIsBookVisitOpen(false)} onSubmit={handleAddVisit} />}
       {successMessage && <SuccessPopup message={successMessage} onClose={() => setSuccessMessage(null)} />}

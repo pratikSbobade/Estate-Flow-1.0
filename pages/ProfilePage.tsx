@@ -1,28 +1,37 @@
 
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend, AreaChart, Area
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Client, Property, SiteVisit, ClientStatus, ClientInteraction, UserRole, UserProfile } from '../types';
+import { Client, Property, SiteVisit, ClientStatus, UserProfile } from '../types';
 
 interface ProfilePageProps {
   clients: Client[];
-  // Fix: changed 'properties[]' to 'Property[]' as 'Property' is the imported type name.
   properties: Property[];
   visits: SiteVisit[];
+  allUsers?: UserProfile[];
   userRole?: string;
+  onUpdateClient?: (client: Client) => void | Promise<void>;
   onSwitchRole?: (role: string) => void;
   onLogout?: () => void;
 }
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, userRole, onSwitchRole, onLogout }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ 
+  clients, properties, visits, allUsers = [], userRole, onUpdateClient, onSwitchRole, onLogout 
+}) => {
   const [activeTab, setActiveTab] = useState<'info' | 'reports' | 'admin'>('info');
   const [adminSubTab, setAdminSubTab] = useState<'directory' | 'assignment' | 'structure'>('directory');
-  const [targetRevenue, setTargetRevenue] = useState<number>(() => {
-    return Number(localStorage.getItem('agent_target_revenue')) || 10000000; 
-  });
+  const [viewingUserReport, setViewingUserReport] = useState<UserProfile | null>(null);
+  
+  // Bulk Assign States
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [bulkAssignFilterPriority, setBulkAssignFilterPriority] = useState<ClientStatus | null>(null);
+  const [bulkAssignTargetAgent, setBulkAssignTargetAgent] = useState<string>('');
 
+  const [targetRevenue] = useState<number>(10000000); // 1Cr target
+  const navigate = useNavigate();
   const isAnyAdmin = ['role_admin', 'role_super_admin'].includes(userRole || '');
 
   const user = {
@@ -30,8 +39,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, 
     role: userRole === 'role_admin' ? 'Regional Admin' : userRole === 'role_super_admin' ? 'Super Admin' : 'Senior Sales Agent',
     id: 'AGENT-99',
     region: 'South Nagpur',
-    reraId: 'NAG/A/2023/11023',
-    joinDate: '15 Jan 2022',
     photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200'
   };
 
@@ -43,29 +50,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, 
 
   const targetProgress = Math.min(Math.round((actualRevenue / targetRevenue) * 100), 100);
 
-  // --- ENHANCED DAILY METRICS ---
   const dailyMetrics = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     const todayInteractions = clients.flatMap(c => c.interactions || [])
       .filter(i => i.timestamp.startsWith(todayStr));
     
     const todayCalls = todayInteractions.filter(i => i.type === 'Call');
-    const connectedCalls = todayCalls.filter(i => {
-      const desc = i.description.toLowerCase();
-      return desc.includes('contacted') || desc.includes('schedule visit') || desc.includes('callback');
-    });
-
     const todayVisits = visits.filter(v => v.scheduledAt.startsWith(todayStr));
 
     return {
       callsToday: todayCalls.length,
-      connectedToday: connectedCalls.length,
       visitsToday: todayVisits.length,
       leadCount: clients.length
     };
   }, [clients, visits]);
 
-  // --- CHART DATA GENERATION ---
   const weeklyActivityData = [
     { day: 'Mon', calls: 12, visits: 2 },
     { day: 'Tue', calls: 18, visits: 4 },
@@ -77,214 +76,262 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ clients, properties, visits, 
   ];
 
   const leadPriorityShare = [
-    { name: 'Hot Leads', value: clients.filter(c => c.priority === ClientStatus.HOT).length, color: '#ef4444' },
-    { name: 'Warm Leads', value: clients.filter(c => c.priority === ClientStatus.WARM).length, color: '#4f46e5' },
-    { name: 'Cold Leads', value: clients.filter(c => c.priority === ClientStatus.COLD).length, color: '#94a3b8' },
+    { name: 'Hot', value: clients.filter(c => c.priority === ClientStatus.HOT).length, color: '#ef4444' },
+    { name: 'Warm', value: clients.filter(c => c.priority === ClientStatus.WARM).length, color: '#4f46e5' },
+    { name: 'Cold', value: clients.filter(c => c.priority === ClientStatus.COLD).length, color: '#94a3b8' },
   ];
 
-  const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444'];
+  // Bulk Assignment Lead List
+  const bulkLeads = useMemo(() => {
+    return clients.filter(c => {
+      if (bulkAssignFilterPriority && c.priority !== bulkAssignFilterPriority) return false;
+      return true;
+    });
+  }, [clients, bulkAssignFilterPriority]);
+
+  const handleToggleLead = (id: string) => {
+    setSelectedLeadIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkAssign = async () => {
+    if (!bulkAssignTargetAgent || selectedLeadIds.length === 0) return;
+    
+    const confirmTransfer = window.confirm(`Confirm transfer of ${selectedLeadIds.length} lead files to ${bulkAssignTargetAgent}?`);
+    if (!confirmTransfer) return;
+
+    for (const leadId of selectedLeadIds) {
+      const client = clients.find(c => c.id === leadId);
+      if (client && onUpdateClient) {
+        await onUpdateClient({ ...client, agent: bulkAssignTargetAgent });
+      }
+    }
+
+    setSelectedLeadIds([]);
+    alert('Lead Re-allocation complete.');
+  };
 
   return (
     <div className="space-y-8 animate-slide-up pb-20">
       {/* Profile Header */}
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transition-colors">
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center">
         <div className="relative mb-6">
-          <div className="w-32 h-32 bg-slate-100 dark:bg-slate-700 rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-2xl transition-colors">
+          <div className="w-32 h-32 bg-slate-100 dark:bg-slate-700 rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-2xl">
             <img src={user.photo} className="w-full h-full object-cover" alt="Profile" />
           </div>
           <button className="absolute -bottom-2 -right-2 w-12 h-12 btn-3d btn-3d-indigo text-white rounded-2xl flex items-center justify-center shadow-lg">
             <i className="fas fa-pencil-alt text-sm"></i>
           </button>
         </div>
-        <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight uppercase transition-colors">{user.name}</h2>
+        <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight uppercase">{user.name}</h2>
         <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-[0.2em]">{user.role} • {user.id}</p>
         
-        <div className="flex gap-3 mt-8">
-           <span className="px-5 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-800 transition-colors">
-             {user.region} Force
-           </span>
-           <span className="px-5 py-2.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 dark:border-emerald-800 transition-colors">
-             Verified Agent
-           </span>
-        </div>
-
         <div className="mt-8 flex flex-wrap justify-center gap-2">
            {onSwitchRole && (
              <>
                <button onClick={() => onSwitchRole('role_agent')} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === 'role_agent' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 bg-slate-100 dark:bg-slate-700'}`}>Agent Profile</button>
-               <button onClick={() => onSwitchRole('role_admin')} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userRole === 'role_admin' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 bg-slate-100 dark:bg-slate-700'}`}>Admin View</button>
+               <button onClick={() => onSwitchRole('role_admin')} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${['role_admin', 'role_super_admin'].includes(userRole || '') ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 bg-slate-100 dark:bg-slate-700'}`}>Admin View</button>
              </>
            )}
            {onLogout && (
-             <button onClick={onLogout} className="px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 transition-all border border-red-100 dark:border-red-800">Log Out</button>
+             <button onClick={onLogout} className="px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-100 dark:border-red-800">Log Out</button>
            )}
         </div>
       </div>
 
-      {/* Main Tabs */}
-      <div className="flex bg-white dark:bg-slate-800 p-2 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm gap-2 transition-colors">
+      {/* Navigation Tabs */}
+      <div className="flex bg-white dark:bg-slate-800 p-2 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm gap-2">
         <button onClick={() => setActiveTab('info')} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Dossier</button>
         <button onClick={() => setActiveTab('reports')} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'reports' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Command Center</button>
         {isAnyAdmin && (
-          <button onClick={() => setActiveTab('admin')} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admin' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}>Team Ops</button>
+          <button onClick={() => setActiveTab('admin')} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admin' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}>Admin View</button>
         )}
       </div>
 
-      {/* Dossier Content */}
+      {/* Tab Contents */}
       {activeTab === 'info' && (
         <div className="space-y-6 animate-slide-up">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-             <MetricCard label="Total Leads" value={clients.length} sub="Lifetime" color="indigo" />
-             <MetricCard label="Visits Done" value={visits.filter(v => v.status === 'Completed').length} sub="Property Tours" color="purple" />
-             <MetricCard label="Revenue" value={`₹${(actualRevenue/10000000).toFixed(1)}Cr`} sub="Sold Inventory" color="emerald" />
-             <MetricCard label="Lead Score" value={`${Math.round(clients.reduce((acc, c) => acc + (c.nurturingScore || 0), 0) / (clients.length || 1))}%`} sub="Avg Quality" color="amber" />
+             <MetricCard label="Leads" value={clients.length} sub="Managed" color="indigo" />
+             <MetricCard label="Visits" value={visits.filter(v => v.status === 'Completed').length} sub="Done" color="purple" />
+             <MetricCard label="Sold" value={`₹${(actualRevenue/10000000).toFixed(1)}Cr`} sub="Revenue" color="emerald" />
+             <MetricCard label="Health" value="84%" sub="Lead Quality" color="amber" />
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="divide-y divide-slate-50 dark:divide-slate-700">
-              <ProfileRow label="RERA License" value={user.reraId} />
-              <ProfileRow label="Employment" value={user.joinDate} />
-              <ProfileRow label="Location Hub" value="Nagpur Metropolitan" />
-              <ProfileRow label="Email" value="rahul.singh@estateflow.com" />
-            </div>
+          <div className="bg-white dark:bg-slate-800 rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-700 divide-y divide-slate-50 dark:divide-slate-700 overflow-hidden">
+             <ProfileRow label="Region" value={user.region} />
+             <ProfileRow label="Work Email" value="rahul.singh@estateflow.com" />
+             <ProfileRow label="Hiring Date" value="Jan 2023" />
           </div>
         </div>
       )}
 
-      {/* Reports / Command Center Content */}
       {activeTab === 'reports' && (
         <div className="space-y-10 animate-slide-up">
-          {/* Daily Productivity Dashboard */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 px-4">
-               <div className="w-1 h-6 bg-indigo-600 rounded-full"></div>
-               <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Today's Daily Pulse</h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-               <ReportStatCard label="Calls Today" value={dailyMetrics.callsToday} icon="fa-phone-volume" color="indigo" sub="Attempts" />
-               <ReportStatCard label="Connected" value={dailyMetrics.connectedToday} icon="fa-headset" color="emerald" sub="Success" />
-               <ReportStatCard label="Visits Fixed" value={dailyMetrics.visitsToday} icon="fa-calendar-check" color="purple" sub="Scheduled" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {/* Weekly Activity Histogram */}
-            <div className="card-neo p-8 rounded-[3.5rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 transition-colors">
-              <div className="flex justify-between items-center mb-8">
-                 <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Weekly Activity Pipeline</h4>
-                 <div className="flex gap-2">
-                    <span className="flex items-center gap-1.5 text-[8px] font-black uppercase text-indigo-500"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Calls</span>
-                    <span className="flex items-center gap-1.5 text-[8px] font-black uppercase text-purple-500"><div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div> Visits</span>
-                 </div>
-              </div>
-              <div className="h-64">
-                 <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={weeklyActivityData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#64748b', textTransform: 'uppercase'}} dy={10} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#64748b'}} />
-                      <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'}} />
-                      <Bar dataKey="calls" fill="#4f46e5" radius={[6, 6, 0, 0]} barSize={16} />
-                      <Bar dataKey="visits" fill="#a855f7" radius={[6, 6, 0, 0]} barSize={16} />
-                   </BarChart>
-                 </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Pipeline Share Pie Chart */}
-            <div className="card-neo p-8 rounded-[3.5rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 transition-colors">
-              <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight mb-8 text-center">Lead Portfolio Maturity</h4>
-              <div className="h-64 relative">
-                 <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                       <Pie 
-                        data={leadPriorityShare} 
-                        cx="50%" cy="50%" 
-                        innerRadius={60} 
-                        outerRadius={85} 
-                        paddingAngle={5} 
-                        dataKey="value"
-                        stroke="none"
-                       >
-                          {leadPriorityShare.map((entry, index) => (
-                             <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                       </Pie>
-                       <Tooltip />
-                       <Legend verticalAlign="bottom" align="center" wrapperStyle={{fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', paddingTop: '20px'}} />
-                    </PieChart>
-                 </ResponsiveContainer>
-                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mb-10">
-                    <span className="text-2xl font-black text-slate-800 dark:text-white">{clients.length}</span>
-                    <span className="text-[7px] font-black text-slate-400 uppercase">Total Leads</span>
-                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Revenue Tracker Area Chart */}
-          <div className="card-neo p-10 rounded-[3.5rem] bg-slate-900 text-white overflow-hidden relative group">
-             <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-10 transition-opacity"><i className="fas fa-coins text-[120px]"></i></div>
-             <div className="relative z-10 space-y-8">
+           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <ReportStatCard label="Calls Today" value={dailyMetrics.callsToday} icon="fa-phone-volume" color="indigo" />
+              <ReportStatCard label="Leads Active" value={clients.length} icon="fa-users" color="emerald" />
+              <ReportStatCard label="Visits Fixed" value={dailyMetrics.visitsToday} icon="fa-calendar-check" color="purple" />
+           </div>
+           <div className="card-neo p-8 rounded-[3.5rem] bg-slate-900 text-white overflow-hidden relative group">
+             <div className="relative z-10 space-y-6">
                 <div className="flex justify-between items-end">
                    <div>
-                      <p className="text-indigo-300 text-[10px] font-black uppercase tracking-widest mb-1">Target Pace</p>
-                      <h3 className="text-3xl font-black tracking-tight uppercase">₹{(actualRevenue/10000000).toFixed(2)}Cr / ₹{(targetRevenue/10000000).toFixed(2)}Cr</h3>
+                      <p className="text-indigo-300 text-[10px] font-black uppercase tracking-widest mb-1">Target Progress</p>
+                      <h3 className="text-2xl font-black uppercase">₹{(actualRevenue/10000000).toFixed(2)}Cr / ₹{(targetRevenue/10000000).toFixed(2)}Cr</h3>
                    </div>
-                   <div className="text-right">
-                      <p className="text-emerald-400 text-2xl font-black">{targetProgress}%</p>
-                      <p className="text-[8px] font-black text-slate-400 uppercase">Goal Achieved</p>
-                   </div>
+                   <p className="text-emerald-400 text-xl font-black">{targetProgress}%</p>
                 </div>
-                <div className="h-4 bg-white/10 rounded-full overflow-hidden shadow-inner">
+                <div className="h-3 bg-white/10 rounded-full overflow-hidden">
                    <div className="h-full bg-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.5)] transition-all duration-1000" style={{ width: `${targetProgress}%` }}></div>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-4">
-                   <ReportMiniStat label="Pending Pipeline" value="₹2.5Cr" />
-                   <ReportMiniStat label="Avg Deal Value" value="₹85L" />
-                   <ReportMiniStat label="Closing Ratio" value="12%" />
-                   <ReportMiniStat label="Last Sale" value="2 Days ago" />
                 </div>
              </div>
           </div>
         </div>
       )}
 
-      {activeTab === 'admin' && (
-        <div className="space-y-8 animate-slide-up">
-           {/* Admin Sub-Navigation */}
-           <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1.5 rounded-2xl gap-1">
-              <button onClick={() => setAdminSubTab('directory')} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'directory' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Registry</button>
-              <button onClick={() => setAdminSubTab('assignment')} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'assignment' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Bulk Assign</button>
-              <button onClick={() => setAdminSubTab('structure')} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'structure' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Hierarchy</button>
+      {activeTab === 'admin' && (activeTab === 'admin' && (
+        <div className="space-y-10 animate-slide-up">
+           {/* Technical Ops Section */}
+           <div className="space-y-4">
+              <div className="flex items-center gap-3 px-4">
+                 <div className="w-1 h-6 bg-red-600 rounded-full"></div>
+                 <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Technical Ops</h3>
+              </div>
+              <div className="card-neo p-8 rounded-[3.5rem] bg-slate-900 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-6 transition-all hover:border-indigo-500/50">
+                 <div className="flex items-center gap-6 text-left">
+                    <div className="w-16 h-16 bg-slate-800 rounded-[1.5rem] flex items-center justify-center text-indigo-400 shadow-inner">
+                       <i className="fas fa-microchip text-2xl"></i>
+                    </div>
+                    <div>
+                       <h4 className="text-lg font-black text-white uppercase tracking-tight">Admin Control Center</h4>
+                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">System wide configurations and data pumps</p>
+                    </div>
+                 </div>
+                 <button 
+                  onClick={() => navigate('/admin')}
+                  className="w-full sm:w-auto px-8 py-4 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[11px] uppercase tracking-widest"
+                 >
+                    Launch Admin Console
+                 </button>
+              </div>
            </div>
 
-           {adminSubTab === 'directory' && (
-             <div className="space-y-6">
-                <div className="flex justify-between items-center px-4">
-                  <h4 className="text-xs font-black uppercase text-slate-800 dark:text-white">Authorized Team Registry</h4>
-                  <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Active Status</span>
-                </div>
-                {/* Personnel Registry rendering logic remains standard but integrated in profile hub */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                   {/* This is a simplified directory for profile view */}
-                   <PersonnelList role="role_agent" />
-                </div>
-             </div>
-           )}
+           {/* Personnel Management Section */}
+           <div className="space-y-4">
+              <div className="flex items-center gap-3 px-4">
+                 <div className="w-1 h-6 bg-indigo-600 rounded-full"></div>
+                 <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Personnel Management</h3>
+              </div>
+              <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1.5 rounded-2xl gap-1">
+                 <button onClick={() => setAdminSubTab('directory')} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'directory' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Registry</button>
+                 <button onClick={() => setAdminSubTab('assignment')} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'assignment' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Bulk Assign</button>
+                 <button onClick={() => setAdminSubTab('structure')} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminSubTab === 'structure' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Hierarchy</button>
+              </div>
 
-           {adminSubTab === 'assignment' && (
-             <div className="card-neo p-10 rounded-[3.5rem] bg-white dark:bg-slate-800 space-y-8">
-                <div className="space-y-2">
-                   <h4 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Lead Distribution Hub</h4>
-                   <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">Centralized pool for re-allocating active lead files across the Nagpur sales force</p>
+              {adminSubTab === 'directory' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-slide-up">
+                   <PersonnelList users={allUsers} onViewReport={(u) => setViewingUserReport(u)} />
                 </div>
-                <div className="py-20 text-center border-4 border-dashed border-slate-50 dark:border-slate-700 rounded-[3rem]">
-                   <i className="fas fa-project-diagram text-slate-200 dark:text-slate-700 text-5xl mb-4"></i>
-                   <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">Select Agent to Begin Transfer</p>
+              )}
+
+              {adminSubTab === 'assignment' && (
+                <div className="card-neo p-8 rounded-[3.5rem] bg-white dark:bg-slate-800 space-y-6 animate-slide-up relative overflow-hidden">
+                   <div className="flex items-center justify-between mb-4">
+                      <div className="text-left">
+                        <h4 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Lead Distribution Hub</h4>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Select files for bulk re-allocation</p>
+                      </div>
+                      <select 
+                        value={bulkAssignFilterPriority || ''} 
+                        onChange={(e) => setBulkAssignFilterPriority(e.target.value as ClientStatus || null)}
+                        className="bg-slate-50 dark:bg-slate-900 border-none text-[9px] font-black uppercase rounded-lg px-3 py-2 outline-none"
+                      >
+                         <option value="">All Priorities</option>
+                         <option value="Hot">Hot Only</option>
+                         <option value="Warm">Warm Only</option>
+                         <option value="Cold">Cold Only</option>
+                      </select>
+                   </div>
+
+                   <div className="max-h-[350px] overflow-y-auto no-scrollbar space-y-2 pb-24">
+                      {bulkLeads.map(lead => (
+                        <div 
+                          key={lead.id} 
+                          onClick={() => handleToggleLead(lead.id)}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between group ${selectedLeadIds.includes(lead.id) ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-indigo-300'}`}
+                        >
+                           <div className="flex items-center gap-4">
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${selectedLeadIds.includes(lead.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200 dark:border-slate-700'}`}>
+                                 {selectedLeadIds.includes(lead.id) && <i className="fas fa-check text-[10px] text-white"></i>}
+                              </div>
+                              <div className="text-left">
+                                 <p className="text-[11px] font-black uppercase text-slate-800 dark:text-white leading-none mb-1">{lead.firstName} {lead.lastName}</p>
+                                 <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Curr: {lead.agent || 'Unassigned'}</p>
+                              </div>
+                           </div>
+                           <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full ${lead.priority === 'Hot' ? 'bg-red-100 text-red-600' : lead.priority === 'Warm' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>{lead.priority}</span>
+                        </div>
+                      ))}
+                      {bulkLeads.length === 0 && (
+                        <div className="py-20 text-center text-slate-300 text-[10px] uppercase font-black">No Leads Found</div>
+                      )}
+                   </div>
+
+                   {selectedLeadIds.length > 0 && (
+                     <div className="absolute bottom-0 left-0 right-0 p-6 bg-slate-900 text-white border-t border-white/10 z-10 flex flex-col sm:flex-row items-center gap-4 justify-between">
+                        <div className="flex items-center gap-3">
+                           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center font-black shadow-lg">{selectedLeadIds.length}</div>
+                           <p className="text-[9px] font-black uppercase tracking-widest text-left leading-tight">Leads selected<br/>for assignment</p>
+                        </div>
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                           <select 
+                             value={bulkAssignTargetAgent} 
+                             onChange={(e) => setBulkAssignTargetAgent(e.target.value)}
+                             className="flex-1 sm:w-48 p-3 bg-slate-800 border border-slate-700 rounded-xl text-[10px] font-black uppercase outline-none"
+                           >
+                              <option value="">Target Agent...</option>
+                              {allUsers.filter(u => u.approvalStatus === 'Approved').map(u => (
+                                <option key={u.id} value={u.name}>{u.name}</option>
+                              ))}
+                           </select>
+                           <button 
+                             onClick={handleBulkAssign}
+                             disabled={!bulkAssignTargetAgent}
+                             className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${bulkAssignTargetAgent ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                           >
+                             Transfer Leads
+                           </button>
+                        </div>
+                     </div>
+                   )}
                 </div>
-             </div>
-           )}
+              )}
+              
+              {adminSubTab === 'structure' && (
+                <div className="card-neo p-10 rounded-[3.5rem] bg-white dark:bg-slate-800 space-y-8 animate-slide-up">
+                   <div className="space-y-2 text-center">
+                      <h4 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Org Hierarchy</h4>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Visual authority tiers</p>
+                   </div>
+                   <div className="p-8 bg-slate-50 dark:bg-slate-900/50 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 text-center">
+                      <i className="fas fa-sitemap text-slate-300 text-4xl mb-4"></i>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visual Tree in Admin Console</p>
+                   </div>
+                </div>
+              )}
+           </div>
         </div>
+      ))}
+
+      {viewingUserReport && (
+        <UserPerformanceModal 
+          user={viewingUserReport} 
+          clients={clients} 
+          visits={visits} 
+          properties={properties} 
+          onClose={() => setViewingUserReport(null)} 
+        />
       )}
     </div>
   );
@@ -298,29 +345,21 @@ const MetricCard: React.FC<{ label: string, value: string | number, sub: string,
       color === 'purple' ? 'text-purple-600' : 
       color === 'emerald' ? 'text-emerald-600' : 'text-amber-500'
     }`}>{value}</p>
-    <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-tighter">{sub}</p>
+    <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase mt-1">{sub}</p>
   </div>
 );
 
-const ReportStatCard: React.FC<{ label: string, value: number, icon: string, color: string, sub: string }> = ({ label, value, icon, color, sub }) => (
-  <div className="card-neo p-8 rounded-[3rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 transition-colors flex items-center justify-between group">
-     <div>
+const ReportStatCard: React.FC<{ label: string, value: number, icon: string, color: string }> = ({ label, value, icon, color }) => (
+  <div className="card-neo p-8 rounded-[3rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-between group">
+     <div className="text-left">
         <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{label}</p>
         <h4 className={`text-4xl font-black ${color === 'indigo' ? 'text-indigo-600' : color === 'emerald' ? 'text-emerald-600' : color === 'purple' ? 'text-purple-600' : 'text-purple-600'}`}>
           {value.toString().padStart(2, '0')}
         </h4>
-        <p className="text-[8px] font-bold text-slate-400 uppercase mt-2">{sub} Count</p>
      </div>
      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl shadow-lg transition-transform group-hover:scale-110 ${color === 'indigo' ? 'bg-indigo-600 shadow-indigo-100' : color === 'emerald' ? 'bg-emerald-500 shadow-emerald-100' : 'bg-purple-600 shadow-purple-100'}`}>
         <i className={`fas ${icon}`}></i>
      </div>
-  </div>
-);
-
-const ReportMiniStat: React.FC<{ label: string, value: string }> = ({ label, value }) => (
-  <div className="space-y-1">
-     <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
-     <p className="text-sm font-black text-white">{value}</p>
   </div>
 );
 
@@ -331,21 +370,83 @@ const ProfileRow: React.FC<{ label: string, value: string }> = ({ label, value }
   </div>
 );
 
-const PersonnelList: React.FC<{ role: string }> = ({ role }) => {
-   const names = ['Vikram M.', 'Pooja K.', 'Aman S.', 'Neha R.'];
+const PersonnelList: React.FC<{ users: UserProfile[], onViewReport: (u: UserProfile) => void }> = ({ users, onViewReport }) => {
+   const filteredUsers = users.filter(u => u.approvalStatus === 'Approved');
    return (
      <>
-       {names.map(name => (
-          <div key={name} className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl flex items-center gap-4 group hover:border-indigo-400 transition-all">
-             <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center text-xs font-black shadow-sm">{name[0]}</div>
-             <div>
-                <p className="text-[10px] font-black uppercase text-slate-800 dark:text-white">{name}</p>
-                <p className="text-[8px] font-bold text-slate-400 uppercase">Sales Specialist</p>
+       {filteredUsers.map(u => (
+          <div 
+            key={u.id} 
+            onClick={() => onViewReport(u)}
+            className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl flex items-center justify-between group hover:border-indigo-400 cursor-pointer transition-all"
+          >
+             <div className="flex items-center gap-4 text-left">
+                <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center text-xs font-black shadow-sm uppercase">{u.name[0]}</div>
+                <div>
+                   <p className="text-[10px] font-black uppercase text-slate-800 dark:text-white mb-0.5">{u.name}</p>
+                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{u.email}</p>
+                </div>
              </div>
+             <i className="fas fa-chart-line text-[10px] text-slate-300 group-hover:text-indigo-600"></i>
           </div>
        ))}
      </>
    );
-}
+};
+
+const UserPerformanceModal: React.FC<{ user: UserProfile, clients: Client[], visits: SiteVisit[], properties: Property[], onClose: () => void }> = ({ user, clients, visits, properties, onClose }) => {
+  const userLeads = useMemo(() => clients.filter(c => c.agent === user.name), [user, clients]);
+  const userVisits = useMemo(() => visits.filter(v => userLeads.some(ul => ul.id === v.clientId)), [userLeads, visits]);
+  const userDeals = useMemo(() => userVisits.filter(v => v.feedback?.nextAction === 'Deal'), [userVisits]);
+  
+  const stats = [
+    { label: 'Leads', value: userLeads.length, color: '#4f46e5' },
+    { label: 'Visits', value: userVisits.length, color: '#10b981' },
+    { label: 'Deals', value: userDeals.length, color: '#f59e0b' }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[350] flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-2xl max-h-[90vh] rounded-[3.5rem] shadow-2xl overflow-hidden flex flex-col transition-colors">
+        <div className="p-8 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
+          <div className="flex items-center gap-4 text-left">
+            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl font-black uppercase">{user.name[0]}</div>
+            <div>
+              <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight">{user.name}</h3>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Personnel Productivity Audit</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-12 h-12 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400 hover:text-red-500 shadow-sm"><i className="fas fa-times text-xl"></i></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-10 space-y-10 no-scrollbar">
+           <div className="grid grid-cols-3 gap-6">
+              {stats.map(s => (
+                <div key={s.label} className="p-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800 text-center">
+                   <p className="text-[8px] font-black text-slate-400 uppercase mb-1">{s.label}</p>
+                   <p className="text-3xl font-black dark:text-white" style={{ color: s.color }}>{s.value}</p>
+                </div>
+              ))}
+           </div>
+
+           <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                 <BarChart data={stats}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#64748b'}} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#64748b'}} />
+                    <Bar dataKey="value" radius={[10, 10, 0, 0]} barSize={40}>
+                       {stats.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Bar>
+                 </BarChart>
+              </ResponsiveContainer>
+           </div>
+        </div>
+        <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-end">
+           <button onClick={onClose} className="px-8 py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Close Audit</button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default ProfilePage;

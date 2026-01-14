@@ -44,11 +44,20 @@ export interface CustomRole {
   isSystem?: boolean;
 }
 
+export interface WhatsAppAttachment {
+  id: string;
+  type: 'image' | 'video' | 'pdf';
+  name: string;
+  url: string;
+  size?: string;
+}
+
 export interface WhatsAppTemplate {
   id: string;
   category: 'Clients' | 'Properties' | 'Visits' | 'General';
   name: string;
   message: string;
+  attachments?: WhatsAppAttachment[];
 }
 
 export interface UserProfile {
@@ -57,9 +66,10 @@ export interface UserProfile {
   role: UserRole | string;
   approvalStatus: 'Pending' | 'Approved' | 'Rejected' | 'Deactivated';
   email: string;
-  password?: string; // Simulated for mock auth
+  password?: string;
   photo?: string;
   region?: string;
+  managerId?: string; // Track reporting hierarchy
   createdAt?: string;
 }
 
@@ -69,7 +79,7 @@ export interface ClientInteraction {
   type: 'Call' | 'WhatsApp' | 'Visit' | 'Email' | 'Note';
   description: string;
   timestamp: string;
-  relatedId?: string; // e.g. visitId
+  relatedId?: string;
 }
 
 export interface Client {
@@ -129,7 +139,7 @@ export interface SiteVisit {
     probability: ClientStatus;
     nextAction: 'Second Visit' | 'Negotiation Meeting' | 'Drop' | 'Deal' | 'Send Details' | 'Send Quotation';
     nextFollowUp: string;
-    attachments: string[]; // Base64 or URLs
+    attachments: string[]; 
     bookingFormUploaded?: boolean;
   };
 }
@@ -151,8 +161,8 @@ export interface Property {
   id: string;
   title: string;
   description: string;
-  type: string; // Apartment, Plot, Villa, Commercial
-  listingType: string; // Sale, Rent, Lease, Resale, Pre-launch, Underconstruction
+  type: string; 
+  listingType: string; 
   possessionDate: string;
   location: {
     country: string;
@@ -200,5 +210,5 @@ export interface Property {
     rmContact: string;
     tat: string;
   };
-  status: 'Available' | 'Sold' | 'Reserved';
+  status: 'Available' | 'Sold' | 'Reserved' | 'On Hold';
 }

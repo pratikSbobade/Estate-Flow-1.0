@@ -12,14 +12,13 @@ const Footer: React.FC<FooterProps> = ({ role }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Fixed core navigation items (Removed Home as it's in the logo)
+  // Core navigation items focusing on CRM data modules
   const navItems = [
     { label: 'Clients', icon: 'fa-users', path: '/clients' },
     { label: 'Properties', icon: 'fa-building', path: '/properties' },
     { label: 'Visits', icon: 'fa-calendar-check', path: '/visits' },
   ];
 
-  const isAdmin = ['role_admin', 'role_super_admin'].includes(role || '');
   const isActive = (path: string) => location.pathname === path;
 
   return (
@@ -47,28 +46,6 @@ const Footer: React.FC<FooterProps> = ({ role }) => {
             </span>
           </button>
         ))}
-        
-        {isAdmin && (
-          <button
-            onClick={() => navigate('/admin')}
-            className={`flex-1 flex flex-col items-center gap-1.5 py-1 px-1 rounded-2xl transition-all duration-300 group ${
-              isActive('/admin') 
-                ? 'text-indigo-600 dark:text-indigo-400' 
-                : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
-            }`}
-          >
-            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-              isActive('/admin') 
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none scale-105' 
-                : 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-slate-700/50'
-            }`}>
-              <i className="fas fa-shield-halved text-lg"></i>
-            </div>
-            <span className={`text-[8px] font-black uppercase tracking-[0.15em] transition-opacity duration-300 ${isActive('/admin') ? 'opacity-100' : 'opacity-60'}`}>
-              Admin
-            </span>
-          </button>
-        )}
       </div>
     </footer>
   );

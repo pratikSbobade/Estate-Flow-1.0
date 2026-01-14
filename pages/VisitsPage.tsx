@@ -1,18 +1,20 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { SiteVisit, ClientStatus, Client, Property, ClientInteraction } from '../types';
+import { SiteVisit, ClientStatus, Client, Property, ClientInteraction, ResourceType, ResourceAction } from '../types';
 import BookVisitModal from '../components/BookVisitModal';
 
 interface VisitsPageProps {
   visits: SiteVisit[];
   searchQuery: string;
-  onUpdateVisit: (updatedVisit: SiteVisit) => void;
-  onAddVisit: (visit: SiteVisit) => void;
+  // Support async handlers from App
+  onUpdateVisit: (updatedVisit: SiteVisit) => void | Promise<void>;
+  onAddVisit: (visit: SiteVisit) => void | Promise<void>;
   onManualAddClick: () => void;
   clients: Client[];
   properties: Property[];
-  onUpdateClient: (client: Client) => void;
+  onUpdateClient: (client: Client) => void | Promise<void>;
+  // Add missing checkPermission prop
+  checkPermission: (resource: ResourceType, action?: ResourceAction) => boolean;
 }
 
 const VisitsPage: React.FC<VisitsPageProps> = ({ 
@@ -20,9 +22,11 @@ const VisitsPage: React.FC<VisitsPageProps> = ({
   searchQuery, 
   onUpdateVisit, 
   onAddVisit, 
+  onManualAddClick,
   clients,
   properties,
-  onUpdateClient
+  onUpdateClient,
+  checkPermission
 }) => {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list');
   const [activeModal, setActiveModal] = useState<{visit: SiteVisit, type: 'feedback' | 'reschedule' | 'cancel' | 'details' | 'share_details' | 'schedule_second'} | null>(null);
@@ -98,6 +102,7 @@ const VisitsPage: React.FC<VisitsPageProps> = ({
     });
 
     Object.values(groups).forEach(g => {
+      // Fix: changed a.timestamp to a.scheduledAt as SiteVisit does not have timestamp property
       g.visits.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
     });
 

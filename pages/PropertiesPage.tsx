@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Property, Client, SiteVisit, PropertyConfiguration } from '../types';
+import { Property, Client, SiteVisit, PropertyConfiguration, ResourceType, ResourceAction } from '../types';
 import BookVisitModal from '../components/BookVisitModal';
 
 interface PropertiesPageProps {
@@ -9,12 +9,15 @@ interface PropertiesPageProps {
   searchQuery: string;
   onAddProperty: () => void;
   onEditProperty: (property: Property) => void;
-  onAddVisit: (newVisit: SiteVisit) => void;
+  // Support async handlers from App
+  onAddVisit: (newVisit: SiteVisit) => void | Promise<void>;
+  // Add missing checkPermission prop
+  checkPermission: (resource: ResourceType, action?: ResourceAction) => boolean;
 }
 
 type SortField = 'price' | 'title' | 'possession';
 
-const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, searchQuery, onAddProperty, onEditProperty, onAddVisit }) => {
+const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, searchQuery, onAddProperty, onEditProperty, onAddVisit, checkPermission }) => {
   const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
   const [viewingProperty, setViewingProperty] = useState<Property | null>(null);
   const [sharingProperty, setSharingProperty] = useState<Property | null>(null);
@@ -300,6 +303,16 @@ const PropertyCard: React.FC<{
 
   const towerCount = property.towers?.length || 0;
 
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'Available': return 'bg-emerald-500';
+      case 'Sold': return 'bg-red-500';
+      case 'Reserved': return 'bg-amber-500';
+      case 'On Hold': return 'bg-blue-500';
+      default: return 'bg-slate-500';
+    }
+  };
+
   return (
     <div 
       className={`group relative rounded-[2.5rem] bg-white dark:bg-slate-800 p-3 shadow-sm transition-all border cursor-pointer ${isSelected ? 'ring-2 ring-indigo-600 border-transparent' : 'border-transparent dark:border-slate-700 hover:border-indigo-100 dark:hover:border-indigo-900 hover:shadow-xl'}`}
@@ -316,20 +329,22 @@ const PropertyCard: React.FC<{
         </button>
       </div>
 
-      <div className="flex gap-4 mb-4">
+      {/* Property Status Badge */}
+      <div className="absolute top-4 left-4 z-10">
+        <span className={`${getStatusColor(property.status || 'Available')} text-white px-2.5 py-1 rounded-xl text-[8px] font-black uppercase shadow-lg border border-white/20 transition-all`}>
+          {property.status || 'Available'}
+        </span>
+      </div>
+
+      <div className="flex gap-4 mb-4 mt-8">
         <div 
           className="w-24 h-24 shrink-0 rounded-2xl bg-cover bg-center bg-slate-100 dark:bg-slate-700 relative overflow-hidden transition-colors" 
           style={{ backgroundImage: `url("${mainPhoto}")` }}
         >
-          <div className="absolute top-1 left-1 flex flex-col gap-1">
+          <div className="absolute bottom-1 left-1 flex flex-col gap-1">
              <span className="bg-white/95 dark:bg-slate-900/95 backdrop-blur px-1.5 py-0.5 rounded text-[7px] font-black text-slate-800 dark:text-white uppercase shadow-sm">
                {property.type}
              </span>
-             {towerCount > 1 && (
-               <span className="bg-indigo-600 text-white px-1.5 py-0.5 rounded text-[7px] font-black uppercase shadow-sm">
-                 {towerCount} Towers
-               </span>
-             )}
           </div>
         </div>
         <div className="flex flex-col flex-1 min-w-0">
@@ -341,15 +356,14 @@ const PropertyCard: React.FC<{
           </div>
           <div className="mt-2 flex flex-col gap-1">
             <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase">RERA ID: <span className="text-slate-700 dark:text-slate-300">{property.legal?.reraId || 'Pending'}</span></p>
-            <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase">Completion: <span className="text-indigo-600 dark:text-indigo-400">{property.reraCompletionDate || 'TBD'}</span></p>
           </div>
           <div className="mt-auto flex items-center gap-2">
             <span className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[8px] font-black uppercase ring-1 ring-inset ${
-              property.listingType === 'Sale' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 ring-green-600/20' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 ring-purple-700/10'
+              property.listingType === 'Sale' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 ring-green-600/20' : property.listingType === 'Resale' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 ring-blue-600/20' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 ring-purple-700/10'
             }`}>
               {property.listingType}
             </span>
-            <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase transition-colors">Est: {nearestPossession}</span>
+            <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase transition-colors">Poss: {nearestPossession}</span>
           </div>
         </div>
       </div>
@@ -369,11 +383,6 @@ const PropertyCard: React.FC<{
                 <span className="text-[10px] font-black text-slate-800 dark:text-white leading-none transition-colors">₹{(c.costing/100000).toFixed(1)}L</span>
              </div>
            ))}
-           {(property.configurations || []).length > 3 && (
-             <div className="p-2 flex items-center justify-center">
-                <span className="text-[9px] font-black text-slate-300 uppercase">+{(property.configurations || []).length - 3} More</span>
-             </div>
-           )}
          </div>
       </div>
 
@@ -415,6 +424,16 @@ const PropertyDetailsModal: React.FC<{
   const [activeTab, setActiveTab] = useState<'overview' | 'configs' | 'amenities' | 'docs'>('overview');
   const [activePhoto, setActivePhoto] = useState(property.media?.photos?.[0] || '');
 
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'Available': return 'text-emerald-600 bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400';
+      case 'Sold': return 'text-red-600 bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400';
+      case 'Reserved': return 'text-amber-600 bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400';
+      case 'On Hold': return 'text-blue-600 bg-blue-50 border-blue-100 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400';
+      default: return 'text-slate-600 bg-slate-50 border-slate-100 dark:bg-slate-900/20 dark:border-slate-800 dark:text-slate-400';
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6">
       <div className="bg-white dark:bg-slate-800 w-full max-w-5xl h-[95vh] sm:h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up transition-colors">
@@ -424,7 +443,12 @@ const PropertyDetailsModal: React.FC<{
                 <i className="fas fa-building text-xl"></i>
              </div>
              <div>
-                <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{property.title}</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{property.title}</h2>
+                  <span className={`px-2 py-0.5 rounded-lg border text-[8px] font-black uppercase ${getStatusColor(property.status || 'Available')}`}>
+                    {property.status || 'Available'}
+                  </span>
+                </div>
                 <div className="flex items-center gap-2 mt-1">
                    <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">ID: #{property.id}</span>
                    <span className="w-1 h-1 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
@@ -658,7 +682,7 @@ Interested? Let me know!`
                 key={c.bhk}
                 onClick={() => toggleConfig(c.bhk)}
                 className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
-                  selectedConfigs.includes(c.bhk) ? 'bg-indigo-600 border-transparent text-white shadow-md' : 'bg-white dark:bg-slate-700 border-slate-100 dark:border-slate-600 text-slate-400 dark:text-slate-400'
+                  selectedConfigs.includes(c.bhk) ? 'bg-indigo-600 border-transparent text-white shadow-md' : 'bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 text-slate-400 dark:text-slate-400'
                 }`}
               >
                 {c.bhk}
@@ -747,6 +771,7 @@ const PropertyComparisonModal: React.FC<{
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-700 transition-colors">
+              <ComparisonRow label="Status" values={selectedProperties.map(p => p.status || 'Available')} />
               <ComparisonRow label="Type" values={selectedProperties.map(p => p.type)} />
               <ComparisonRow label="Possession" values={selectedProperties.map(p => p.possessionDate || 'TBD')} />
               <ComparisonRow label="Area" values={selectedProperties.map(p => p.location?.area || 'N/A')} />

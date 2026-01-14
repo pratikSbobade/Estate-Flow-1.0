@@ -269,12 +269,13 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
         </div>
 
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-8 space-y-12 hide-scrollbar scroll-smooth">
-          <Section id="basic" title="Basic Details" subtitle="Core identification of the property">
+          <Section id="basic" title="Basic Details" subtitle="Core identification and status">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <Input label="Listing Title" value={formData.title} onChange={v => handleChange('title', v)} placeholder="e.g. Sunrise Heights Phase 2" />
+              <Select label="Property Status" value={formData.status} onChange={v => handleChange('status', v)} options={['Available', 'Sold', 'Reserved', 'On Hold']} />
               <Input label="Possession Date" type="date" value={formData.possessionDate} onChange={v => handleChange('possessionDate', v)} />
               <Select label="Property Type" value={formData.type} onChange={v => handleChange('type', v)} options={['Apartment', 'Plot', 'Villa', 'Commercial']} />
-              <Select label="Listing Type" value={formData.listingType} onChange={v => handleChange('listingType', v)} options={['Sale', 'Rent', 'Lease', 'Resale', 'Pre-launch', 'Underconstruction']} />
+              <Select label="Listing Type" value={formData.listingType} onChange={v => handleChange('listingType', v)} options={['Sale', 'Resale', 'Rent']} />
             </div>
             <div className="mt-6">
               <Input label="Property Description" type="textarea" value={formData.description} onChange={v => handleChange('description', v)} placeholder="Enter details about the property..." />
