@@ -8,18 +8,26 @@ interface FooterProps {
   checkPermission?: (resource: ResourceType, action?: ResourceAction) => boolean;
 }
 
-const Footer: React.FC<FooterProps> = ({ role }) => {
+const Footer: React.FC<FooterProps> = ({ role, checkPermission }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
   // Core navigation items focusing on CRM data modules
-  const navItems = [
-    { label: 'Clients', icon: 'fa-users', path: '/clients' },
-    { label: 'Properties', icon: 'fa-building', path: '/properties' },
-    { label: 'Visits', icon: 'fa-calendar-check', path: '/visits' },
+  const allNavItems = [
+    { label: 'Clients', icon: 'fa-users', path: '/clients', resource: 'Leads' as ResourceType },
+    { label: 'Properties', icon: 'fa-building', path: '/properties', resource: 'Properties' as ResourceType },
+    { label: 'Visits', icon: 'fa-calendar-check', path: '/visits', resource: 'Site Visits' as ResourceType },
   ];
 
+  // Filter items based on user permissions
+  const navItems = allNavItems.filter(item => 
+    checkPermission ? checkPermission(item.resource) : true
+  );
+
   const isActive = (path: string) => location.pathname === path;
+
+  // If no items are permitted, don't render footer
+  if (navItems.length === 0) return null;
 
   return (
     <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-lg bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl px-4 py-3 rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] z-[100] border border-white/40 dark:border-slate-700/50 transition-all duration-300">
