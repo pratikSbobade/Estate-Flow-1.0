@@ -20,6 +20,7 @@ const FORM_SECTIONS = [
 
 const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, onSubmit, availableLocations = [] }) => {
   const [activeTab, setActiveTab] = useState('basic');
+  const [mobileError, setMobileError] = useState<string>('');
   const [formData, setFormData] = useState<Partial<Client>>(initialData || {
     salutation: 'Mr.',
     type: ClientType.BUYER,
@@ -61,6 +62,28 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleMobileChange = (value: string) => {
+    // Ensure only numbers
+    const numericValue = value.replace(/\D/g, '');
+    // Limit to 10 digits
+    const truncatedValue = numericValue.slice(0, 10);
+    
+    handleChange('mobile', truncatedValue);
+
+    // Real-time validation feedback
+    if (truncatedValue.length > 0) {
+      if (!/^[6-9]/.test(truncatedValue)) {
+        setMobileError('Number must start with 6, 7, 8, or 9');
+      } else if (truncatedValue.length === 10) {
+        setMobileError(''); // Valid length and start
+      } else {
+        setMobileError(''); // Typing in progress
+      }
+    } else {
+      setMobileError('');
+    }
+  };
+
   const handleToggleMultiselect = (field: keyof Client, item: string) => {
     const current = (formData[field] as string[]) || [];
     const updated = current.includes(item) 
@@ -71,6 +94,17 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Strict Mobile Validation on Submit
+    const mobile = formData.mobile || '';
+    const indianMobileRegex = /^[6-9]\d{9}$/;
+    
+    if (!indianMobileRegex.test(mobile)) {
+      setMobileError('Invalid Format: Must be 10 digits starting with 6, 7, 8, or 9');
+      scrollToTab('contact');
+      return;
+    }
+
     const finalClient: Client = {
       ...formData as Client,
       id: formData.id || `CL-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -168,7 +202,15 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
 
           <Section id="contact" title="Contact Details" subtitle="Ask naturally during small talk">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <InputField label="Primary Mobile" type="tel" value={formData.mobile} onChange={v => handleChange('mobile', v)} required />
+              <InputField 
+                label="Primary Mobile" 
+                type="tel" 
+                value={formData.mobile} 
+                onChange={handleMobileChange} 
+                required 
+                error={mobileError}
+                placeholder="10-digit number"
+              />
               <InputField label="Secondary Phone" placeholder="Add phone numbers..." value={formData.secondaryPhone?.join(',')} onChange={v => handleChange('secondaryPhone', v.split(',').filter(Boolean))} />
               <InputField label="Email (Optional)" type="email" value={formData.email} onChange={v => handleChange('email', v)} />
             </div>
@@ -242,7 +284,7 @@ const Section: React.FC<{ id: string, title: string, subtitle: string, children:
   </div>
 );
 
-const InputField: React.FC<{ label: string, value: any, onChange: (v: any) => void, type?: string, options?: string[], required?: boolean, placeholder?: string }> = ({ label, value, onChange, type = 'text', options, required, placeholder }) => (
+const InputField: React.FC<{ label: string, value: any, onChange: (v: any) => void, type?: string, options?: string[], required?: boolean, placeholder?: string, error?: string }> = ({ label, value, onChange, type = 'text', options, required, placeholder, error }) => (
   <div className="space-y-1.5">
     <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label} {required && <span className="text-red-500">*</span>}</label>
     {type === 'select' ? (
@@ -258,9 +300,10 @@ const InputField: React.FC<{ label: string, value: any, onChange: (v: any) => vo
         value={value || ''} 
         onChange={e => onChange(e.target.value)} 
         placeholder={placeholder}
-        className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 shadow-sm transition-colors" 
+        className={`w-full p-3 bg-white dark:bg-slate-700 border rounded-xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 shadow-sm transition-colors ${error ? 'border-red-500 focus:border-red-500' : 'border-slate-200 dark:border-slate-600'}`} 
       />
     )}
+    {error && <p className="text-[9px] font-black text-red-500 ml-1 uppercase tracking-wider">{error}</p>}
   </div>
 );
 
