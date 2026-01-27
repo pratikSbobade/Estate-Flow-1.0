@@ -66,6 +66,11 @@ export interface UserProfile {
   role: UserRole | string;
   approvalStatus: 'Pending' | 'Approved' | 'Rejected' | 'Deactivated';
   email: string;
+  mobile?: string;
+  whatsapp?: string;
+  reraId?: string;
+  territory?: string;
+  joinDate?: string;
   password?: string;
   photo?: string;
   region?: string;
