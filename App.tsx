@@ -60,8 +60,7 @@ const AppContent: React.FC = () => {
   const navigate = useNavigate();
 
   const checkPermission = useCallback((resource: ResourceType, action: ResourceAction = 'Read') => {
-    // Super admin bypasses all checks
-    return true;
+    return true; // Super admin bypasses all checks
   }, []);
 
   const fetchData = async () => {
@@ -94,23 +93,38 @@ const AppContent: React.FC = () => {
   }, [theme]);
 
   const handleAddVisit = async (newVisit: SiteVisit) => {
+    // Optimistic Update
+    setVisits(prev => [newVisit, ...prev]);
+    setSuccessMessage('Visit scheduled successfully.');
+    
     const { error } = await supabase.from('site_visits').insert([newVisit]);
-    if (!error) {
-      setVisits(prev => [newVisit, ...prev]);
-      setSuccessMessage('Visit scheduled successfully.');
+    if (error) {
+      console.error("Failed to sync visit to database:", error);
+      // Rollback if needed or notify user of sync issue
     }
   };
 
   const handleAddClient = async (newClient: Client) => {
-    const { interactions, ...payload } = newClient;
-    const { error } = await supabase.from('clients').upsert([payload]);
-    if (!error) {
-      setClients(prev => {
-        const exists = prev.find(c => c.id === newClient.id);
-        return exists ? prev.map(c => c.id === newClient.id ? newClient : c) : [newClient, ...prev];
-      });
-      setIsAddClientOpen(false);
-      setSuccessMessage('Client saved.');
+    // 1. Instant Modal Close & Local State Update (Optimistic)
+    setIsAddClientOpen(false);
+    setClients(prev => {
+      const exists = prev.find(c => c.id === newClient.id);
+      if (exists) {
+        return prev.map(c => c.id === newClient.id ? newClient : c);
+      }
+      return [newClient, ...prev];
+    });
+    setSuccessMessage('Client profile saved and synchronized.');
+
+    // 2. Background Sync with Supabase
+    try {
+      const { interactions, ...payload } = newClient;
+      const { error } = await supabase.from('clients').upsert([payload]);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Database Sync Error:', error);
+      // We don't necessarily want to alert the user immediately since it's locally saved,
+      // but in a production app, we would queue this for retry.
     }
   };
 

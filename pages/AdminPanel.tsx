@@ -2,9 +2,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend 
+  Cell 
 } from 'recharts';
-import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions, WhatsAppAttachment } from '../types';
+import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions } from '../types';
 
 interface AdminPanelProps {
   clients: Client[];
@@ -30,13 +30,6 @@ const RESOURCES: ResourceType[] = [
 ];
 
 const ACTIONS: ResourceAction[] = ['Read', 'Add', 'Edit', 'Delete', 'Assign'];
-
-const CATEGORY_ATTRIBUTES: Record<string, string[]> = {
-  'Clients': ['firstName', 'lastName', 'mobile', 'email', 'budgetMax', 'priority', 'agent'],
-  'Properties': ['title', 'type', 'listingType', 'area', 'priceMin', 'possessionDate', 'id'],
-  'Visits': ['clientName', 'propertyName', 'scheduledAt', 'status'],
-  'General': ['companyName', 'currentDate', 'agentName']
-};
 
 const CSV_SCHEMAS = {
   Clients: ['firstName', 'lastName', 'mobile', 'email', 'address', 'budgetMin', 'budgetMax', 'priority', 'source'],
@@ -200,11 +193,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   });
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [newTemplate, setNewTemplate] = useState<Partial<WhatsAppTemplate>>({ category: 'Clients', name: '', message: '', attachments: [] });
-  const templateTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
   const saveTemplate = () => {
     if (!newTemplate.name || !newTemplate.message || !newTemplate.category) {
-      alert("Please fill name, category and message.");
+      alert("Please fill name, category and message body.");
       return;
     }
     const tpl: WhatsAppTemplate = { 
@@ -219,6 +211,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const deleteTemplate = (id: string) => {
+    if (!window.confirm("Remove this WhatsApp script?")) return;
     const updated = templates.filter(t => t.id !== id);
     setTemplates(updated);
     localStorage.setItem('ef_wa_templates', JSON.stringify(updated));
@@ -296,6 +289,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!managerId) return 'Not Assigned';
     const manager = allUsers.find(u => u.id === managerId);
     return manager ? manager.name : 'Unknown';
+  };
+
+  const getCategoryColor = (cat?: string) => {
+    switch(cat) {
+      case 'Clients': return 'text-indigo-600 bg-indigo-50 border-indigo-100';
+      case 'Properties': return 'text-emerald-600 bg-emerald-50 border-emerald-100';
+      case 'Visits': return 'text-amber-600 bg-amber-50 border-amber-100';
+      default: return 'text-slate-600 bg-slate-50 border-slate-100';
+    }
   };
 
   return (
@@ -445,15 +447,79 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div key={tpl.id} className="card-neo p-8 rounded-[2.5rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex flex-col justify-between group transition-all hover:border-emerald-300">
                   <div>
                       <div className="flex justify-between items-start mb-4">
-                        <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[8px] font-black rounded-lg uppercase tracking-widest border border-emerald-100 dark:border-emerald-800">{tpl.category}</span>
+                        <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-colors ${getCategoryColor(tpl.category)}`}>
+                          {tpl.category}
+                        </span>
                         <button onClick={() => deleteTemplate(tpl.id)} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><i className="fas fa-trash"></i></button>
                       </div>
                       <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase leading-tight">{tpl.name}</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium italic mt-3 line-clamp-4 leading-relaxed">"{tpl.message}"</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium italic mt-3 line-clamp-4 leading-relaxed transition-colors">"{tpl.message}"</p>
                   </div>
                 </div>
               ))}
+              {templates.length === 0 && (
+                <div className="col-span-full py-24 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-[3rem]">
+                   <i className="fab fa-whatsapp text-slate-100 dark:text-slate-800 text-[100px] mb-6"></i>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">No WhatsApp Scripts Found</p>
+                </div>
+              )}
            </div>
+
+           {isCreatingTemplate && (
+             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[300] flex items-center justify-center p-6">
+                <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                   <div className="p-10 border-b dark:border-slate-700 flex justify-between items-center transition-colors">
+                      <div>
+                         <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Create Script</h3>
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Design message templates with categories</p>
+                      </div>
+                      <button onClick={() => setIsCreatingTemplate(false)} className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors"><i className="fas fa-times"></i></button>
+                   </div>
+                   
+                   <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Script Category</label>
+                        <select 
+                          value={newTemplate.category} 
+                          onChange={e => setNewTemplate({...newTemplate, category: e.target.value as any})}
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all"
+                        >
+                          <option value="Clients">Clients</option>
+                          <option value="Properties">Properties</option>
+                          <option value="Visits">Visits</option>
+                          <option value="General">General</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Script Name</label>
+                        <input 
+                          value={newTemplate.name} 
+                          onChange={e => setNewTemplate({...newTemplate, name: e.target.value})}
+                          placeholder="e.g. Post-Visit Brochure Sharing" 
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 transition-all" 
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Message Body</label>
+                        <textarea 
+                          value={newTemplate.message} 
+                          onChange={e => setNewTemplate({...newTemplate, message: e.target.value})}
+                          placeholder="Write your message here..." 
+                          rows={6}
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-medium dark:text-white outline-none focus:border-indigo-600 transition-all" 
+                        />
+                      </div>
+                   </div>
+
+                   <div className="p-10 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex gap-4 shrink-0 transition-colors">
+                      <button onClick={() => setIsCreatingTemplate(false)} className="flex-1 py-5 btn-3d btn-3d-white rounded-[1.5rem] font-black text-[11px] uppercase tracking-widest">Discard</button>
+                      <button onClick={saveTemplate} className="flex-[2] py-5 btn-3d btn-3d-indigo text-white rounded-[1.5rem] font-black text-[11px] uppercase tracking-widest shadow-xl">Deploy Script</button>
+                   </div>
+                </div>
+             </div>
+           )}
         </div>
       )}
 
@@ -482,7 +548,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-white dark:bg-slate-800 rounded-[3rem] border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="bg-white dark:bg-slate-800 rounded-[3rem] border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden transition-colors">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead>
@@ -516,7 +582,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                               </select>
                             </td>
                             <td className="px-8 py-5">
-                               <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/50 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                               <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/50 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800 transition-colors">
                                  {getManagerName(user.managerId)}
                                </span>
                             </td>
@@ -541,12 +607,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
            {teamSubTab === 'assign' && (
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-slide-up">
-                <div className="card-neo p-8 rounded-[3rem] bg-white dark:bg-slate-800 space-y-6">
+                <div className="card-neo p-8 rounded-[3rem] bg-white dark:bg-slate-800 space-y-6 transition-colors">
                    <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg"><i className="fas fa-user-tag"></i></div>
                       <div>
-                        <h4 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Step 1: Select Subordinate</h4>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Select the user whose reporting line you want to change</p>
+                        <h4 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Step 1: Subordinate</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Select user to reassign</p>
                       </div>
                    </div>
                    <div className="relative">
@@ -573,12 +639,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                    </div>
                 </div>
 
-                <div className="card-neo p-8 rounded-[3rem] bg-white dark:bg-slate-800 space-y-6">
+                <div className="card-neo p-8 rounded-[3rem] bg-white dark:bg-slate-800 space-y-6 transition-colors">
                    <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-lg"><i className="fas fa-user-shield"></i></div>
                       <div>
-                        <h4 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Step 2: Assign Superior</h4>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Select the manager this user will report to</p>
+                        <h4 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Step 2: Superior</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Select the manager</p>
                       </div>
                    </div>
                    <div className="max-h-[400px] overflow-y-auto no-scrollbar space-y-2">
@@ -605,7 +671,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           onClick={handleCommitAssign}
                           className="w-full py-5 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-900/20"
                         >
-                          Commit Hierarchy Assignment
+                          Commit Hierarchy Update
                         </button>
                      </div>
                    )}
@@ -618,7 +684,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {isAddUserModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[250] flex items-center justify-center p-6">
            <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-slide-up transition-colors">
-              <div className="p-10 border-b dark:border-slate-700 flex justify-between items-center">
+              <div className="p-10 border-b dark:border-slate-700 flex justify-between items-center transition-colors">
                  <div>
                     <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Provision User</h3>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Manual Account Creation</p>
@@ -628,20 +694,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <form onSubmit={handleCreateUser} className="p-10 space-y-5">
                  <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity</label><input name="name" required placeholder="Full Name" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 transition-all" /></div>
                  <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Corporate Email</label><input name="email" type="email" required placeholder="Email Address" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors" /></div>
-                 <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Initial Password</label><input name="password" type="text" placeholder="Default: 12345" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-all" /></div>
+                 <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Initial Password</label><input name="password" type="text" placeholder="Default: 12345" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-all" /></div>
                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assigned Authority Tier</label>
-                    <select name="role" required className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all">{customRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Authority Tier</label>
+                    <select name="role" required className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all transition-colors">{customRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
                  </div>
                  <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Reporting Manager</label>
-                    <select name="managerId" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all">
+                    <select name="managerId" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all transition-colors">
                        <option value="">None / Independent</option>
                        {registryUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
                  </div>
                  <div className="flex gap-4 pt-4">
-                    <button type="button" onClick={() => setIsAddUserModalOpen(false)} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Discard</button>
+                    <button type="button" onClick={() => setIsAddUserModalOpen(false)} className="flex-1 py-4 btn-3d btn-3d-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors">Discard</button>
                     <button type="submit" className="flex-[2] py-4 btn-3d btn-3d-indigo text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100">Deploy Profile</button>
                  </div>
               </form>
@@ -675,11 +741,11 @@ const UserPerformanceModal: React.FC<{ user: UserProfile, clients: Client[], vis
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[350] flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-800 w-full max-w-4xl max-h-[90vh] rounded-[3.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col transition-colors border border-white/20">
-        <div className="p-10 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center shrink-0">
+        <div className="p-10 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center shrink-0 transition-colors">
           <div className="flex items-center gap-5">
-            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-lg uppercase">{user.name[0]}</div>
+            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-lg uppercase transition-colors">{user.name[0]}</div>
             <div>
-              <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight">{user.name}</h3>
+              <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight transition-colors">{user.name}</h3>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Audit Intelligence Dashboard</p>
             </div>
           </div>
@@ -688,7 +754,7 @@ const UserPerformanceModal: React.FC<{ user: UserProfile, clients: Client[], vis
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-10 space-y-12 no-scrollbar">
-           <div className="h-64 bg-slate-50 dark:bg-slate-900/50 rounded-[2.5rem] p-6 border border-slate-100 dark:border-slate-700 shadow-inner">
+           <div className="h-64 bg-slate-50 dark:bg-slate-900/50 rounded-[2.5rem] p-6 border border-slate-100 dark:border-slate-700 shadow-inner transition-colors">
               <ResponsiveContainer width="100%" height="100%">
                  <BarChart data={activityDistribution}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
