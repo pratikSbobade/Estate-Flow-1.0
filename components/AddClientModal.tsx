@@ -38,6 +38,47 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
+  const isManualScrolling = useRef(false);
+
+  // Synchronize Active Tab on Scroll
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const observerOptions = {
+      root: container,
+      rootMargin: '-10% 0px -70% 0px',
+      threshold: 0
+    };
+
+    const observerCallback = (entries: IntersectionObserverEntry[]) => {
+      if (isManualScrolling.current) return;
+
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const sectionId = entry.target.id.replace('form-section-', '');
+          setActiveTab(sectionId);
+          
+          // Auto-scroll the nav bar to keep active tab visible
+          const navBtn = document.getElementById(`nav-btn-${sectionId}`);
+          if (navBtn && navRef.current) {
+            navRef.current.scrollTo({
+              left: navBtn.offsetLeft - 40,
+              behavior: 'smooth'
+            });
+          }
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(observerCallback, observerOptions);
+    FORM_SECTIONS.forEach((s) => {
+      const el = document.getElementById(`form-section-${s.id}`);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   // Recalculate lead nurturing score based on field completion
   useEffect(() => {
@@ -63,21 +104,16 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
   };
 
   const handleMobileChange = (value: string) => {
-    // Ensure only numbers
     const numericValue = value.replace(/\D/g, '');
-    // Limit to 10 digits
     const truncatedValue = numericValue.slice(0, 10);
-    
     handleChange('mobile', truncatedValue);
-
-    // Real-time validation feedback
     if (truncatedValue.length > 0) {
       if (!/^[6-9]/.test(truncatedValue)) {
         setMobileError('Number must start with 6, 7, 8, or 9');
       } else if (truncatedValue.length === 10) {
-        setMobileError(''); // Valid length and start
+        setMobileError('');
       } else {
-        setMobileError(''); // Typing in progress
+        setMobileError('');
       }
     } else {
       setMobileError('');
@@ -94,17 +130,13 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Strict Mobile Validation on Submit
     const mobile = formData.mobile || '';
     const indianMobileRegex = /^[6-9]\d{9}$/;
-    
     if (!indianMobileRegex.test(mobile)) {
       setMobileError('Invalid Format: Must be 10 digits starting with 6, 7, 8, or 9');
       scrollToTab('contact');
       return;
     }
-
     const finalClient: Client = {
       ...formData as Client,
       id: formData.id || `CL-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -115,6 +147,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
   };
 
   const scrollToTab = (id: string) => {
+    isManualScrolling.current = true;
     setActiveTab(id);
     const element = document.getElementById(`form-section-${id}`);
     if (element && scrollContainerRef.current) {
@@ -130,9 +163,12 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
         behavior: 'smooth'
       });
     }
+    // Release lock after animation
+    setTimeout(() => {
+      isManualScrolling.current = false;
+    }, 1000);
   };
 
-  // Fallback locations if no properties exist yet to provide options
   const displayLocations = availableLocations.length > 0 
     ? availableLocations 
     : ['South Nagpur', 'Mihan', 'Wardha Road', 'Manish Nagar', 'Civil Lines', 'Sonegaon'];
@@ -140,7 +176,6 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-end sm:items-center justify-center p-0 sm:p-6">
       <div className="bg-white dark:bg-slate-800 w-full max-w-4xl h-[95vh] sm:h-auto sm:max-h-[90vh] rounded-t-[3rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up transition-colors">
-        {/* Header */}
         <div className="px-8 pt-8 pb-4 flex justify-between items-center bg-white dark:bg-slate-800 shrink-0">
           <div>
             <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight uppercase">
@@ -163,7 +198,6 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
           </button>
         </div>
 
-        {/* Horizontal Nav */}
         <div className="px-6 shrink-0 border-b border-slate-50 dark:border-slate-700">
           <div 
             ref={navRef}
@@ -186,7 +220,6 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
           </div>
         </div>
 
-        {/* Form Content */}
         <div 
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto p-8 space-y-12 hide-scrollbar scroll-smooth"
@@ -260,7 +293,6 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
           <div className="h-20"></div>
         </div>
 
-        {/* Footer Actions */}
         <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex gap-4 shrink-0 transition-colors">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white font-black text-[10px] uppercase rounded-2xl">Discard</button>
           <button onClick={handleSubmit} className="flex-[2] py-4 btn-3d btn-3d-indigo text-white font-black text-[10px] uppercase rounded-2xl">

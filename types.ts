@@ -208,6 +208,7 @@ export interface Property {
     photos: string[];
     videoUrl: string;
     floorPlanUrl: string;
+    floorPlans?: Array<{ name: string; url: string }>;
     documents: Array<{ name: string; url: string }>;
   };
   source: {

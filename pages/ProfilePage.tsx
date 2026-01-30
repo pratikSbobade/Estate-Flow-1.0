@@ -16,22 +16,22 @@ interface ProfilePageProps {
   onUpdateClient?: (client: Client) => void | Promise<void>;
   onSwitchRole?: (role: string) => void;
   checkPermission: (resource: ResourceType, action?: ResourceAction) => boolean;
+  onSignOut?: () => void;
 }
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ 
-  clients, properties, visits, allUsers = [], userRole, onUpdateClient, checkPermission
+  clients, properties, visits, allUsers = [], userRole, onUpdateClient, checkPermission, onSignOut
 }) => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Forced Admin Persona for Direct Access Mode
   const [persona, setPersona] = useState<'agent' | 'admin'>('admin');
   const [activeTab, setActiveTab] = useState<'dossier' | 'performance' | 'hub'>('dossier');
 
   const [profileData, setProfileData] = useState<Partial<UserProfile>>({
     name: 'Rahul Singh',
     id: 'ADMIN-01',
-    role: 'Super Admin',
+    role: userRole || 'Super Admin',
     email: 'rahul.singh@estateflow.com',
     mobile: '+91 98765 43210',
     whatsapp: '+91 98765 43210',
@@ -71,21 +71,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     <div className="space-y-8 animate-slide-up pb-28">
       {/* Header Profile Card */}
       <div className="bg-white dark:bg-slate-800 p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-slate-700 transition-all flex flex-col items-center text-center relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8">
-           <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1.5 rounded-2xl gap-2 border border-slate-200 dark:border-slate-700">
-             <button 
-               onClick={() => setPersona('agent')}
-               className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${persona === 'agent' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
-             >
-               Agent View
-             </button>
-             <button 
-               onClick={() => setPersona('admin')}
-               className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${persona === 'admin' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-400'}`}
-             >
-               Admin View
-             </button>
-           </div>
+        <div className="absolute top-0 right-0 p-8 flex gap-3">
+           <button 
+             onClick={onSignOut}
+             className="w-10 h-10 bg-red-50 dark:bg-red-900/30 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-800 shadow-sm hover:bg-red-500 hover:text-white transition-all"
+             title="Sign Out"
+           >
+             <i className="fas fa-sign-out-alt text-sm"></i>
+           </button>
         </div>
 
         <div className="relative group mb-6 mt-10 sm:mt-0">
@@ -110,7 +103,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
           <span className="px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[8px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-800">
             {profileData.role}
           </span>
-          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">DIRECT ACCESS MODE</span>
+          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{profileData.territory || 'Nagpur'}</span>
         </div>
         
         <div className="mt-8 flex flex-wrap justify-center gap-4">

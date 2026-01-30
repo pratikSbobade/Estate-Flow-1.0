@@ -12,6 +12,8 @@ import EmiCalculator from './pages/EmiCalculator';
 import AdminPanel from './pages/AdminPanel';
 import { Client, Property, SiteVisit, UserProfile, CustomRole, ResourceType, ResourceAction } from './types';
 import AddClientModal from './components/AddClientModal';
+import AddPropertyModal from './components/AddPropertyModal';
+import BookVisitModal from './components/BookVisitModal';
 import { supabase } from './lib/supabase';
 
 const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => (
@@ -29,18 +31,27 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
   </div>
 );
 
-const AppContent: React.FC = () => {
-  // Hardcoded Super Admin user for direct access
-  const [currentUser] = useState<UserProfile>({
-    id: 'ADMIN-01',
-    name: 'Rahul Singh',
-    email: 'rahul.singh@estateflow.com',
-    role: 'role_super_admin',
-    approvalStatus: 'Approved',
-    region: 'Nagpur'
-  });
+const MOCK_USER: UserProfile = {
+  id: 'dev-user-001',
+  name: 'Rahul Singh',
+  email: 'admin@estateflow.com',
+  role: 'role_super_admin',
+  approvalStatus: 'Approved',
+  region: 'Nagpur Headquarters',
+  mobile: '+91 98765 43210',
+  whatsapp: '+91 98765 43210',
+  reraId: 'RERA-NAG-2023-441',
+  territory: 'Nagpur Headquarters',
+  joinDate: '2023-01-15',
+  photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200'
+};
 
+const AppContent: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(MOCK_USER);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [isBookVisitOpen, setIsBookVisitOpen] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<Property | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'light');
@@ -48,20 +59,17 @@ const AppContent: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [visits, setVisits] = useState<SiteVisit[]>([]);
-  const [fullUserRegistry, setFullUserRegistry] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Load Custom Roles
-  const [customRoles] = useState<CustomRole[]>(() => {
-    const saved = localStorage.getItem('ef_custom_roles');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [fullUserRegistry, setFullUserRegistry] = useState<UserProfile[]>([MOCK_USER]);
+  const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
 
   const checkPermission = useCallback((resource: ResourceType, action: ResourceAction = 'Read') => {
-    return true; // Super admin bypasses all checks
-  }, []);
+    if (!currentUser) return false;
+    if (currentUser.role === 'role_super_admin') return true;
+    return true; 
+  }, [currentUser]);
 
   const fetchData = async () => {
     try {
@@ -78,8 +86,6 @@ const AppContent: React.FC = () => {
       if (usersRes.data) setFullUserRegistry(usersRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -93,46 +99,77 @@ const AppContent: React.FC = () => {
   }, [theme]);
 
   const handleAddVisit = async (newVisit: SiteVisit) => {
-    // Optimistic Update
     setVisits(prev => [newVisit, ...prev]);
     setSuccessMessage('Visit scheduled successfully.');
     
     const { error } = await supabase.from('site_visits').insert([newVisit]);
-    if (error) {
-      console.error("Failed to sync visit to database:", error);
-      // Rollback if needed or notify user of sync issue
-    }
+    if (error) console.error("Failed to sync visit:", error);
+  };
+
+  const handleUpdateVisit = async (updatedVisit: SiteVisit) => {
+    setVisits(prev => prev.map(v => v.id === updatedVisit.id ? updatedVisit : v));
+    setSuccessMessage('Visit record updated.');
+
+    const { error } = await supabase.from('site_visits').upsert([updatedVisit]);
+    if (error) console.error("Failed to sync updated visit:", error);
   };
 
   const handleAddClient = async (newClient: Client) => {
-    // 1. Instant Modal Close & Local State Update (Optimistic)
     setIsAddClientOpen(false);
     setClients(prev => {
       const exists = prev.find(c => c.id === newClient.id);
-      if (exists) {
-        return prev.map(c => c.id === newClient.id ? newClient : c);
-      }
-      return [newClient, ...prev];
+      return exists ? prev.map(c => c.id === newClient.id ? newClient : c) : [newClient, ...prev];
     });
-    setSuccessMessage('Client profile saved and synchronized.');
+    setSuccessMessage('Client profile saved.');
 
-    // 2. Background Sync with Supabase
     try {
       const { interactions, ...payload } = newClient;
       const { error } = await supabase.from('clients').upsert([payload]);
       if (error) throw error;
     } catch (error) {
       console.error('Database Sync Error:', error);
-      // We don't necessarily want to alert the user immediately since it's locally saved,
-      // but in a production app, we would queue this for retry.
     }
+  };
+
+  const handleSaveProperty = async (property: Property) => {
+    setIsAddPropertyOpen(false);
+    setEditingProperty(undefined);
+    
+    setProperties(prev => {
+      const exists = prev.find(p => p.id === property.id);
+      return exists ? prev.map(p => p.id === property.id ? property : p) : [property, ...prev];
+    });
+    
+    setSuccessMessage('Property details updated successfully.');
+
+    try {
+      const { error } = await supabase.from('properties').upsert([property]);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Property Database Sync Error:', error);
+    }
+  };
+
+  const handleHeaderAdd = () => {
+    if (location.pathname === '/clients') {
+      setIsAddClientOpen(true);
+    } else if (location.pathname === '/properties') {
+      setEditingProperty(undefined);
+      setIsAddPropertyOpen(true);
+    } else if (location.pathname === '/visits') {
+      setIsBookVisitOpen(true);
+    }
+  };
+
+  const handleSignOut = () => {
+    navigate('/');
   };
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col items-center gap-4">
         <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Syncing Ecosystem...</p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Flow...</p>
       </div>
     </div>
   );
@@ -140,25 +177,44 @@ const AppContent: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-300">
       <Header 
-        searchQuery={searchQuery} onSearchChange={setSearchQuery} onAddClick={() => setIsAddClientOpen(true)}
+        searchQuery={searchQuery} onSearchChange={setSearchQuery} onAddClick={handleHeaderAdd}
         theme={theme} onToggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
-        role={currentUser.role} checkPermission={checkPermission}
+        role={currentUser?.role} checkPermission={checkPermission}
         onFilterClick={() => {}}
       />
       <main className="flex-grow pt-32 pb-28 px-4 max-w-7xl mx-auto w-full">
         <Routes>
           <Route path="/" element={<Dashboard clients={clients} properties={properties} visits={visits} />} />
           <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
-          <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={() => {}} onAddVisit={handleAddVisit} onManualAddClick={() => {}} clients={clients} properties={properties} onUpdateClient={handleAddClient} checkPermission={checkPermission} />} />
-          <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => {}} onEditProperty={() => {}} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
-          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} checkPermission={checkPermission} userRole={currentUser.role} />} />
+          <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} checkPermission={checkPermission} />} />
+          <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(undefined); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
+          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} checkPermission={checkPermission} userRole={currentUser?.role} onSignOut={handleSignOut} />} />
           <Route path="/emi" element={<EmiCalculator />} />
-          <Route path="/admin" element={<AdminPanel userRole={currentUser.role} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={() => {}} onApproveUser={() => {}} checkPermission={checkPermission} />} />
+          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={() => {}} onApproveUser={() => {}} checkPermission={checkPermission} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      <Footer role={currentUser.role} checkPermission={checkPermission} />
+      <Footer role={currentUser?.role} checkPermission={checkPermission} />
+      
       {isAddClientOpen && <AddClientModal onClose={() => setIsAddClientOpen(false)} onSubmit={handleAddClient} />}
+      
+      {isAddPropertyOpen && (
+        <AddPropertyModal 
+          initialData={editingProperty} 
+          onClose={() => { setIsAddPropertyOpen(false); setEditingProperty(undefined); }} 
+          onSubmit={handleSaveProperty} 
+        />
+      )}
+
+      {isBookVisitOpen && (
+        <BookVisitModal 
+          clients={clients}
+          properties={properties}
+          onClose={() => setIsBookVisitOpen(false)} 
+          onSubmit={(v) => { handleAddVisit(v); setIsBookVisitOpen(false); }}
+        />
+      )}
+      
       {successMessage && <SuccessPopup message={successMessage} onClose={() => setSuccessMessage(null)} />}
     </div>
   );

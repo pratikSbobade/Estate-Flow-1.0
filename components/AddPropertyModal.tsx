@@ -26,11 +26,14 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   
   const [bulkPhotoUrls, setBulkPhotoUrls] = useState('');
   const [bulkDocUrls, setBulkDocUrls] = useState('');
+  const [bulkFloorPlanUrls, setBulkFloorPlanUrls] = useState('');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
+  const isManualScrolling = useRef(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const floorPlanInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<Partial<Property>>(initialData || {
     id: `P-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -52,10 +55,49 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
     amenities: [],
     furnishing: { status: 'Unfurnished', interiors: [] },
     views: [],
-    media: { photos: [], videoUrl: '', floorPlanUrl: '', documents: [] },
+    media: { photos: [], videoUrl: '', floorPlanUrl: '', floorPlans: [], documents: [] },
     source: { dedicatedRM: '', rmContact: '', tat: '' },
     status: 'Available'
   });
+
+  // Synchronize Active Tab on Scroll
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const observerOptions = {
+      root: container,
+      rootMargin: '-10% 0px -70% 0px',
+      threshold: 0
+    };
+
+    const observerCallback = (entries: IntersectionObserverEntry[]) => {
+      if (isManualScrolling.current) return;
+
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const sectionId = entry.target.id.replace('section-', '');
+          setActiveTab(sectionId);
+          
+          const navBtn = document.getElementById(`nav-${sectionId}`);
+          if (navBtn && navRef.current) {
+            navRef.current.scrollTo({
+              left: navBtn.offsetLeft - 40,
+              behavior: 'smooth'
+            });
+          }
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(observerCallback, observerOptions);
+    SECTIONS.forEach((s) => {
+      const el = document.getElementById(`section-${s.id}`);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   // AUTO-SYNC: Update financial range when configurations change
   useEffect(() => {
@@ -108,7 +150,6 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
     const base64Files = await Promise.all(Array.from(files).map((file: File) => fileToBase64(file)));
     const currentPhotos = formData.media?.photos || [];
     handleChange('media.photos', [...currentPhotos, ...base64Files]);
@@ -119,16 +160,27 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
     const newDocs = await Promise.all(Array.from(files).map(async (file: File) => ({
       name: file.name,
       url: await fileToBase64(file)
     })));
-
     const currentDocs = formData.media?.documents || [];
     handleChange('media.documents', [...currentDocs, ...newDocs]);
     showToast(`${files.length} Document(s) Added`);
     if (docInputRef.current) docInputRef.current.value = '';
+  };
+
+  const handleFloorPlanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newPlans = await Promise.all(Array.from(files).map(async (file: File) => ({
+      name: file.name,
+      url: await fileToBase64(file)
+    })));
+    const currentPlans = formData.media?.floorPlans || [];
+    handleChange('media.floorPlans', [...currentPlans, ...newPlans]);
+    showToast(`${files.length} Floor Plan(s) Added`);
+    if (floorPlanInputRef.current) floorPlanInputRef.current.value = '';
   };
 
   const addUrlsToPhotos = () => {
@@ -153,16 +205,35 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
     showToast(`${urls.length} URL(s) added to documents`);
   };
 
-  const removePhoto = (index: number) => {
+  const addUrlsToFloorPlans = () => {
+    if (!bulkFloorPlanUrls.trim()) return;
+    const urls = bulkFloorPlanUrls.split(',').map(u => u.trim()).filter(Boolean);
+    const newPlans = urls.map(url => {
+        const name = url.split('/').pop()?.split('?')[0] || 'Floor Plan Link';
+        return { name: name.length > 30 ? 'Floor Plan Link' : name, url };
+    });
+    const currentPlans = formData.media?.floorPlans || [];
+    handleChange('media.floorPlans', [...currentPlans, ...newPlans]);
+    setBulkFloorPlanUrls('');
+    showToast(`${urls.length} URL(s) added to floor plans`);
+  };
+
+  const removePhoto = (idx: number) => {
     const photos = [...(formData.media?.photos || [])];
-    photos.splice(index, 1);
+    photos.splice(idx, 1);
     handleChange('media.photos', photos);
   };
 
-  const removeDoc = (index: number) => {
+  const removeDoc = (idx: number) => {
     const docs = [...(formData.media?.documents || [])];
-    docs.splice(index, 1);
+    docs.splice(idx, 1);
     handleChange('media.documents', docs);
+  };
+
+  const removeFloorPlan = (idx: number) => {
+    const plans = [...(formData.media?.floorPlans || [])];
+    plans.splice(idx, 1);
+    handleChange('media.floorPlans', plans);
   };
 
   const handleTowerChange = (index: number, field: string, value: any) => {
@@ -179,15 +250,11 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   const handleConfigChange = (index: number, field: keyof PropertyConfiguration, value: any) => {
     const updatedConfigs = [...(formData.configurations || [])];
     updatedConfigs[index] = { ...updatedConfigs[index], [field]: value };
-    
     if (field === 'costing' || field === 'carpetArea') {
       const c = Number(updatedConfigs[index].costing);
       const a = Number(updatedConfigs[index].carpetArea);
-      if (a > 0) {
-        updatedConfigs[index].pricePerSqUnit = Math.round(c / a);
-      }
+      if (a > 0) updatedConfigs[index].pricePerSqUnit = Math.round(c / a);
     }
-    
     setFormData(prev => ({ ...prev, configurations: updatedConfigs }));
   };
 
@@ -197,7 +264,6 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   };
 
   const addTower = () => setFormData(prev => ({ ...prev, towers: [...(prev.towers || []), { name: '', possession: '' }] }));
-  
   const addConfig = () => setFormData(prev => ({ 
     ...prev, 
     configurations: [...(prev.configurations || []), { 
@@ -216,6 +282,7 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   };
 
   const scrollToTab = (id: string) => {
+    isManualScrolling.current = true;
     setActiveTab(id);
     const element = document.getElementById(`section-${id}`);
     if (element && scrollContainerRef.current) {
@@ -225,6 +292,9 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
     if (navBtn && navRef.current) {
       navRef.current.scrollTo({ left: navBtn.offsetLeft - 40, behavior: 'smooth' });
     }
+    setTimeout(() => {
+      isManualScrolling.current = false;
+    }, 1000);
   };
 
   const amenityOptions = ['Lift', 'Security', 'CCTV', 'Power Backup', 'Water Source', 'Garden', 'Clubhouse', 'Gym', 'Swimming Pool', 'Play Area'];
@@ -406,126 +476,93 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
           <Section id="media" title="Media & Documents" subtitle="Visuals and paperwork (Direct Upload or Link Imports)">
             <div className="space-y-12">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                {/* Photos Section */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-center">
                     <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-wider">Property Gallery</h4>
-                    <button 
-                      onClick={() => photoInputRef.current?.click()}
-                      className="text-[10px] font-black text-[#4f46e5] uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-100 transition-colors"
-                    >
+                    <button onClick={() => photoInputRef.current?.click()} className="text-[10px] font-black text-[#4f46e5] uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-100 transition-colors">
                       <i className="fas fa-file-image"></i> Local Upload
                     </button>
                     <input type="file" ref={photoInputRef} multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                   </div>
-
                   <div className="space-y-2">
                     <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Import Photo URLs (Comma Separated)</label>
                     <div className="flex gap-2">
-                      <textarea
-                        value={bulkPhotoUrls}
-                        onChange={e => setBulkPhotoUrls(e.target.value)}
-                        placeholder="https://image1.jpg, https://image2.png ..."
-                        className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[60px] transition-colors"
-                      />
-                      <button 
-                        onClick={addUrlsToPhotos}
-                        disabled={!bulkPhotoUrls.trim()}
-                        className="px-4 bg-[#4f46e5] text-white rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-[#3730a3] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                      >
-                        Add
-                      </button>
+                      <textarea value={bulkPhotoUrls} onChange={e => setBulkPhotoUrls(e.target.value)} placeholder="https://image1.jpg, https://image2.png ..." className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[60px] transition-colors" />
+                      <button onClick={addUrlsToPhotos} disabled={!bulkPhotoUrls.trim()} className="px-4 bg-[#4f46e5] text-white rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-[#3730a3] disabled:opacity-50 disabled:cursor-not-allowed transition-all">Add</button>
                     </div>
                   </div>
-                  
-                  {/* Gallery Preview */}
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mt-4 max-h-60 overflow-y-auto p-1 hide-scrollbar">
                     {formData.media?.photos?.map((photo, idx) => (
                       <div key={idx} className="aspect-square bg-slate-100 dark:bg-slate-700 rounded-xl relative overflow-hidden border border-slate-200 dark:border-slate-600 group shadow-sm transition-transform hover:scale-[1.02]">
                         <img src={photo} alt={`Property ${idx}`} className="w-full h-full object-cover" />
-                        <button 
-                          onClick={() => removePhoto(idx)}
-                          className="absolute inset-0 bg-red-600/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                        >
+                        <button onClick={() => removePhoto(idx)} className="absolute inset-0 bg-red-600/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                           <i className="fas fa-trash-alt text-white text-sm"></i>
                         </button>
-                        <div className="absolute top-1 right-1 bg-black/40 text-white text-[7px] px-1 rounded backdrop-blur-sm">
-                          {photo.startsWith('data:') ? 'LCL' : 'URL'}
-                        </div>
                       </div>
                     ))}
-                    {(!formData.media?.photos || formData.media.photos.length === 0) && (
-                      <div className="col-span-full py-10 text-center border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-2xl">
-                         <i className="fas fa-images text-slate-200 dark:text-slate-600 text-3xl mb-2"></i>
-                         <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase">Gallery Empty</p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* Documents Section */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-center">
                     <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-wider">Legal Documents</h4>
-                    <button 
-                      onClick={() => docInputRef.current?.click()}
-                      className="text-[10px] font-black text-[#4f46e5] uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-100 transition-colors"
-                    >
+                    <button onClick={() => docInputRef.current?.click()} className="text-[10px] font-black text-[#4f46e5] uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-100 transition-colors">
                       <i className="fas fa-file-pdf"></i> Local Upload
                     </button>
                     <input type="file" ref={docInputRef} multiple className="hidden" onChange={handleDocUpload} />
                   </div>
-
                   <div className="space-y-2">
                     <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Import Doc URLs (Comma Separated)</label>
                     <div className="flex gap-2">
-                      <textarea
-                        value={bulkDocUrls}
-                        onChange={e => setBulkDocUrls(e.target.value)}
-                        placeholder="https://site.com/rera.pdf, https://site.com/brochure.pdf ..."
-                        className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[60px] transition-colors"
-                      />
-                      <button 
-                        onClick={addUrlsToDocs}
-                        disabled={!bulkDocUrls.trim()}
-                        className="px-4 bg-[#4f46e5] text-white rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-[#3730a3] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                      >
-                        Add
-                      </button>
+                      <textarea value={bulkDocUrls} onChange={e => setBulkDocUrls(e.target.value)} placeholder="https://site.com/rera.pdf, https://site.com/brochure.pdf ..." className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[60px] transition-colors" />
+                      <button onClick={addUrlsToDocs} disabled={!bulkDocUrls.trim()} className="px-4 bg-[#4f46e5] text-white rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-[#3730a3] disabled:opacity-50 disabled:cursor-not-allowed transition-all">Add</button>
                     </div>
                   </div>
-                  
-                  {/* Doc List */}
                   <div className="space-y-2 mt-4 max-h-60 overflow-y-auto p-1 hide-scrollbar">
                     {formData.media?.documents?.map((doc, idx) => (
                       <div key={idx} className="flex items-center justify-between p-3 bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-xl shadow-sm group hover:border-indigo-400 transition-all">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center text-indigo-500">
-                             <i className={`fas ${doc.url.startsWith('data:') ? 'fa-file-alt' : 'fa-link'} text-xs`}></i>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-black text-slate-700 dark:text-slate-300 truncate uppercase tracking-tight">{doc.name}</p>
-                            <p className="text-[8px] font-bold text-slate-400 uppercase">{doc.url.startsWith('data:') ? 'Local File' : 'External Link'}</p>
-                          </div>
+                          <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center text-indigo-500"><i className={`fas ${doc.url.startsWith('data:') ? 'fa-file-alt' : 'fa-link'} text-xs`}></i></div>
+                          <div className="min-w-0"><p className="text-[10px] font-black text-slate-700 dark:text-slate-300 truncate uppercase tracking-tight">{doc.name}</p></div>
                         </div>
-                        <button onClick={() => removeDoc(idx)} className="text-slate-300 hover:text-red-500 p-1 transition-colors">
-                          <i className="fas fa-times-circle"></i>
-                        </button>
+                        <button onClick={() => removeDoc(idx)} className="text-slate-300 hover:text-red-500 p-1 transition-colors"><i className="fas fa-times-circle"></i></button>
                       </div>
                     ))}
-                    {(!formData.media?.documents || formData.media.documents.length === 0) && (
-                      <div className="py-10 text-center border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-2xl">
-                         <i className="fas fa-file-contract text-slate-200 dark:text-slate-600 text-3xl mb-2"></i>
-                         <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase">Documents Empty</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <Input label="Video / Virtual Tour URL" value={formData.media?.videoUrl} onChange={v => handleChange('media.videoUrl', v)} placeholder="YouTube, Vimeo or Drive Link" />
-                <Input label="Floor Plan URL (Direct Link)" value={formData.media?.floorPlanUrl} onChange={v => handleChange('media.floorPlanUrl', v)} placeholder="Image URL or Drive PDF Link" />
+              <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 space-y-6 transition-colors">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-wider">Floor Plans</h4>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase">Upload images or PDF versions of the layout</p>
+                  </div>
+                  <button onClick={() => floorPlanInputRef.current?.click()} className="text-[10px] font-black text-white bg-[#4f46e5] px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#3730a3] transition-all shadow-md">
+                    <i className="fas fa-cloud-upload-alt"></i> Upload Floor Plan
+                  </button>
+                  <input type="file" ref={floorPlanInputRef} multiple accept="image/*,application/pdf" className="hidden" onChange={handleFloorPlanUpload} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Bulk Import Floor Plan Links</label>
+                  <div className="flex gap-2">
+                    <textarea value={bulkFloorPlanUrls} onChange={e => setBulkFloorPlanUrls(e.target.value)} placeholder="https://site.com/fp1.png, https://site.com/fp2.pdf ..." className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[60px] transition-colors" />
+                    <button onClick={addUrlsToFloorPlans} disabled={!bulkFloorPlanUrls.trim()} className="px-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all">Add</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-h-72 overflow-y-auto no-scrollbar p-1">
+                  {(formData.media?.floorPlans || []).map((plan, idx) => {
+                    const isPdf = plan.url.toLowerCase().endsWith('.pdf') || plan.url.startsWith('data:application/pdf');
+                    return (
+                      <div key={idx} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden group shadow-sm transition-all hover:border-indigo-400">
+                        <div className="aspect-[4/3] bg-slate-50 dark:bg-slate-900 relative">
+                          {isPdf ? <div className="w-full h-full flex flex-col items-center justify-center text-red-500 gap-2"><i className="fas fa-file-pdf text-4xl"></i><span className="text-[7px] font-black uppercase text-slate-400 text-center px-2">PDF</span></div> : <img src={plan.url} alt={plan.name} className="w-full h-full object-cover" />}
+                          <button onClick={() => removeFloorPlan(idx)} className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"><i className="fas fa-times text-[10px]"></i></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </Section>
@@ -537,15 +574,12 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
               <Input label="TAT Period" value={formData.source?.tat} onChange={v => handleChange('source.tat', v)} placeholder="e.g. 24 Hours" />
             </div>
           </Section>
-
           <div className="h-32"></div>
         </div>
 
         <div className="p-8 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex gap-4 shrink-0 transition-colors">
           <button onClick={onClose} className="flex-1 py-4 btn-3d btn-3d-white font-black text-[10px] uppercase rounded-2xl">Discard</button>
-          <button onClick={handleSubmit} className="flex-[2] py-4 btn-3d btn-3d-indigo text-white font-black text-[10px] uppercase rounded-2xl">
-            {initialData ? 'Update Property' : 'Save Property'}
-          </button>
+          <button onClick={handleSubmit} className="flex-[2] py-4 btn-3d btn-3d-indigo text-white font-black text-[10px] uppercase rounded-2xl">{initialData ? 'Update Property' : 'Save Property'}</button>
         </div>
       </div>
     </div>
@@ -554,78 +588,29 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
 
 const Section: React.FC<{ id: string, title: string, subtitle: string, children: React.ReactNode }> = ({ id, title, subtitle, children }) => (
   <div id={`section-${id}`} className="space-y-6">
-    <div>
-      <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">{title}</h3>
-      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">{subtitle}</p>
-    </div>
-    <div className="bg-slate-50/50 dark:bg-slate-900/50 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors">
-      {children}
-    </div>
+    <div><h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">{title}</h3><p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">{subtitle}</p></div>
+    <div className="bg-slate-50/50 dark:bg-slate-900/50 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm transition-colors">{children}</div>
   </div>
 );
 
 const Input: React.FC<{ label: string, value: any, onChange?: (v: any) => void, type?: string, placeholder?: string, readOnly?: boolean }> = ({ label, value, onChange, type = 'text', placeholder, readOnly }) => (
   <div className="space-y-1.5">
     <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label>
-    {type === 'textarea' ? (
-      <textarea
-        value={value || ''}
-        onChange={e => onChange?.(e.target.value)}
-        placeholder={placeholder}
-        className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[100px] transition-colors"
-      />
-    ) : (
-      <input
-        type={type}
-        value={value || ''}
-        onChange={e => onChange?.(e.target.value)}
-        placeholder={placeholder}
-        readOnly={readOnly}
-        className={`w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm ${readOnly ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed' : ''} transition-colors`}
-      />
-    )}
+    {type === 'textarea' ? <textarea value={value || ''} onChange={e => onChange?.(e.target.value)} placeholder={placeholder} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm min-h-[100px] transition-colors" /> : <input type={type} value={value || ''} onChange={e => onChange?.(e.target.value)} placeholder={placeholder} readOnly={readOnly} className={`w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold dark:text-white outline-none focus:border-[#4f46e5] shadow-sm ${readOnly ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed' : ''} transition-colors`} />}
   </div>
 );
 
 const Select: React.FC<{ label: string, value: any, onChange: (v: any) => void, options: string[] }> = ({ label, value, onChange, options }) => (
   <div className="space-y-1.5">
     <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label>
-    <div className="relative">
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-black dark:text-white appearance-none outline-none focus:border-[#4f46e5] shadow-sm transition-colors"
-      >
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600 pointer-events-none text-[10px]"></i>
-    </div>
+    <div className="relative"><select value={value} onChange={e => onChange(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-black dark:text-white appearance-none outline-none focus:border-[#4f46e5] shadow-sm transition-colors">{options.map(o => <option key={o} value={o}>{o}</option>)}</select><i className="fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600 pointer-events-none text-[10px]"></i></div>
   </div>
 );
 
 const Multiselect: React.FC<{ label: string, value: string[], onChange: (v: string[]) => void, options: string[] }> = ({ label, value, onChange, options }) => {
-  const toggle = (opt: string) => {
-    const next = value.includes(opt) ? value.filter(o => o !== opt) : [...value, opt];
-    onChange(next);
-  };
+  const toggle = (opt: string) => { const next = value.includes(opt) ? value.filter(o => o !== opt) : [...value, opt]; onChange(next); };
   return (
-    <div className="space-y-2">
-      <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label>
-      <div className="flex flex-wrap gap-2">
-        {options.map(o => (
-          <button
-            key={o}
-            type="button"
-            onClick={() => toggle(o)}
-            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-              value.includes(o) ? 'bg-[#4f46e5] text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 border border-slate-200 dark:border-slate-600 hover:border-[#4f46e5]'
-            }`}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
-    </div>
+    <div className="space-y-2"><label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block ml-1">{label}</label><div className="flex flex-wrap gap-2">{options.map(o => <button key={o} type="button" onClick={() => toggle(o)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${value.includes(o) ? 'bg-[#4f46e5] text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 border border-slate-200 dark:border-slate-600 hover:border-[#4f46e5]'}`}>{o}</button>)}</div></div>
   );
 };
 

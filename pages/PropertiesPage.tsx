@@ -207,6 +207,7 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
             onShare={() => setSharingProperty(property)}
             onBook={() => setBookingProperty(property)}
             onContactRM={(e) => handleContactRM(property, e)}
+            checkPermission={checkPermission}
           />
         ))}
       </main>
@@ -245,6 +246,7 @@ const PropertiesPage: React.FC<PropertiesPageProps> = ({ properties, clients, se
           onShare={() => setSharingProperty(viewingProperty)}
           onBook={() => setBookingProperty(viewingProperty)}
           onContactRM={() => handleContactRM(viewingProperty)}
+          checkPermission={checkPermission}
         />
       )}
 
@@ -283,8 +285,9 @@ const PropertyCard: React.FC<{
   onView: () => void,
   onShare: () => void,
   onBook: () => void,
-  onContactRM: (e: React.MouseEvent) => void
-}> = ({ property, isSelected, onToggle, onEdit, onView, onShare, onBook, onContactRM }) => {
+  onContactRM: (e: React.MouseEvent) => void,
+  checkPermission: (resource: ResourceType, action?: ResourceAction) => boolean;
+}> = ({ property, isSelected, onToggle, onEdit, onView, onShare, onBook, onContactRM, checkPermission }) => {
   const mainPhoto = property.media?.photos?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=400';
 
   const nearestPossession = useMemo(() => {
@@ -313,12 +316,14 @@ const PropertyCard: React.FC<{
     }
   };
 
+  const canEdit = checkPermission('Properties', 'Edit');
+
   return (
     <div 
       className={`group relative rounded-[2.5rem] bg-white dark:bg-slate-800 p-3 shadow-sm transition-all border cursor-pointer ${isSelected ? 'ring-2 ring-indigo-600 border-transparent' : 'border-transparent dark:border-slate-700 hover:border-indigo-100 dark:hover:border-indigo-900 hover:shadow-xl'}`}
       onClick={onView}
     >
-      {/* Select Toggle */}
+      {/* Select Toggle and Edit Buttons */}
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
         <button 
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
@@ -327,6 +332,16 @@ const PropertyCard: React.FC<{
         >
           <i className={`fas ${isSelected ? 'fa-check' : 'fa-columns'} text-xs`}></i>
         </button>
+
+        {canEdit && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            className="w-10 h-10 rounded-xl bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700 flex items-center justify-center shadow-lg hover:text-indigo-600 hover:scale-105 transition-all"
+            title="Edit Property"
+          >
+            <i className="fas fa-pencil-alt text-xs"></i>
+          </button>
+        )}
       </div>
 
       {/* Property Status Badge */}
@@ -419,8 +434,9 @@ const PropertyDetailsModal: React.FC<{
   onEdit: () => void,
   onShare: () => void,
   onBook: () => void,
-  onContactRM: () => void
-}> = ({ property, onClose, onEdit, onShare, onBook, onContactRM }) => {
+  onContactRM: () => void,
+  checkPermission: (resource: ResourceType, action?: ResourceAction) => boolean;
+}> = ({ property, onClose, onEdit, onShare, onBook, onContactRM, checkPermission }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'configs' | 'amenities' | 'docs'>('overview');
   const [activePhoto, setActivePhoto] = useState(property.media?.photos?.[0] || '');
 
@@ -433,6 +449,8 @@ const PropertyDetailsModal: React.FC<{
       default: return 'text-slate-600 bg-slate-50 border-slate-100 dark:bg-slate-900/20 dark:border-slate-800 dark:text-slate-400';
     }
   };
+
+  const canEdit = checkPermission('Properties', 'Edit');
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6">
@@ -457,9 +475,11 @@ const PropertyDetailsModal: React.FC<{
              </div>
           </div>
           <div className="flex items-center gap-3">
-             <button onClick={onEdit} className="w-10 h-10 bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl flex items-center justify-center text-slate-400 hover:text-indigo-600" title="Edit Property">
-                <i className="fas fa-pencil-alt text-xs"></i>
-             </button>
+             {canEdit && (
+               <button onClick={onEdit} className="w-10 h-10 bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl flex items-center justify-center text-slate-400 hover:text-indigo-600" title="Edit Property">
+                  <i className="fas fa-pencil-alt text-xs"></i>
+               </button>
+             )}
              <button onClick={onClose} className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400 hover:text-red-500">
                 <i className="fas fa-times"></i>
              </button>
@@ -720,12 +740,12 @@ Interested? Let me know!`
 
 const ComparisonRow: React.FC<{ label: string, values: string[], isMultiline?: boolean }> = ({ label, values, isMultiline }) => (
   <tr className="group hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors">
-    <td className="p-6 sticky left-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm z-10 border-r border-slate-50 dark:border-slate-700 font-black transition-colors">
-      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{label}</span>
+    <td className="p-4 sm:p-6 sticky left-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md z-10 border-r border-slate-50 dark:border-slate-700 font-black transition-colors min-w-[120px] sm:min-w-[150px]">
+      <span className="text-[9px] sm:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{label}</span>
     </td>
     {values.map((v, i) => (
-      <td key={i} className="p-6 text-center">
-        <span className={`text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors ${isMultiline ? 'whitespace-pre-line' : ''}`}>
+      <td key={i} className="p-4 sm:p-6 text-center min-w-[200px] sm:min-w-[250px]">
+        <span className={`text-[10px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors ${isMultiline ? 'whitespace-pre-line' : ''}`}>
           {v}
         </span>
       </td>
@@ -733,38 +753,39 @@ const ComparisonRow: React.FC<{ label: string, values: string[], isMultiline?: b
   </tr>
 );
 
-// Added PropertyComparisonModal to fix the compilation error
 const PropertyComparisonModal: React.FC<{ 
   selectedProperties: Property[], 
   onClose: () => void 
 }> = ({ selectedProperties, onClose }) => {
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-800 w-full max-w-6xl h-[90vh] rounded-[3rem] shadow-2xl flex flex-col animate-slide-up transition-colors">
-        <div className="p-8 border-b dark:border-slate-700 flex justify-between items-center transition-colors">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[300] flex items-center justify-center p-0 sm:p-4">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-6xl h-full sm:h-[90vh] sm:rounded-[3rem] shadow-2xl flex flex-col animate-slide-up transition-colors">
+        <div className="p-6 sm:p-8 border-b dark:border-slate-700 flex justify-between items-center transition-colors bg-white dark:bg-slate-800 z-[40]">
           <div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Compare Properties</h2>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Compare Properties</h2>
             <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Direct feature-by-feature breakdown</p>
           </div>
-          <button onClick={onClose} className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400 hover:text-red-500">
+          <button onClick={onClose} className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors">
             <i className="fas fa-times"></i>
           </button>
         </div>
-        <div className="flex-1 overflow-auto p-8 hide-scrollbar">
-          <table className="w-full border-collapse">
+        
+        <div className="flex-1 overflow-auto hide-scrollbar relative bg-white dark:bg-slate-800">
+          <table className="w-full border-collapse table-fixed min-w-max">
             <thead>
-              <tr>
-                <th className="p-6 sticky left-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm z-20 text-left border-r border-slate-50 dark:border-slate-700 min-w-[150px] transition-colors">
-                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Key Features</span>
+              <tr className="bg-white dark:bg-slate-800">
+                {/* Intersection Cell - Sticky both vertically and horizontally */}
+                <th className="p-4 sm:p-6 sticky top-0 left-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md z-[30] text-left border-r border-slate-50 dark:border-slate-700 min-w-[120px] sm:min-w-[150px] transition-colors border-b dark:border-slate-700">
+                  <span className="text-[9px] sm:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Key Features</span>
                 </th>
                 {selectedProperties.map(p => (
-                  <th key={p.id} className="p-6 min-w-[250px] text-center bg-slate-50/30 dark:bg-slate-900/30 transition-colors">
+                  <th key={p.id} className="p-4 sm:p-6 min-w-[200px] sm:min-w-[250px] text-center sticky top-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md z-[20] transition-colors border-b dark:border-slate-700">
                     <div className="flex flex-col items-center">
-                      <div className="w-20 h-20 rounded-2xl overflow-hidden mb-3 border-4 border-white dark:border-slate-700 shadow-sm">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden mb-3 border-4 border-white dark:border-slate-700 shadow-sm">
                         <img src={p.media?.photos?.[0] || 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=200'} className="w-full h-full object-cover" alt="" />
                       </div>
-                      <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase truncate w-full">{p.title}</h4>
-                      <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-1 uppercase tracking-tighter">₹{((p.financials?.priceMin || 0)/100000).toFixed(1)}L - ₹{((p.financials?.priceMax || 0)/100000).toFixed(1)}L</p>
+                      <h4 className="text-[10px] sm:text-sm font-black text-slate-900 dark:text-white uppercase truncate w-full">{p.title}</h4>
+                      <p className="text-[8px] sm:text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-1 uppercase tracking-tighter">₹{((p.financials?.priceMin || 0)/100000).toFixed(1)}L - ₹{((p.financials?.priceMax || 0)/100000).toFixed(1)}L</p>
                     </div>
                   </th>
                 ))}
@@ -782,6 +803,9 @@ const PropertyComparisonModal: React.FC<{
             </tbody>
           </table>
         </div>
+        
+        {/* Visual shadow to indicate horizontal scroll on mobile */}
+        <div className="sm:hidden absolute bottom-[80px] left-0 w-8 h-full bg-gradient-to-r from-slate-900/5 to-transparent pointer-events-none z-40"></div>
       </div>
     </div>
   );
