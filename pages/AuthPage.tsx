@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, mapProfile } from '../lib/supabase';
 import { UserProfile } from '../types';
 
 interface AuthPageProps {
@@ -46,6 +46,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
               email: email,
               role: email.toLowerCase() === 'admin@ef.com' ? 'role_super_admin' : 'role_agent',
               approval_status: 'Approved',
+              created_at: new Date().toISOString(),
               join_date: new Date().toISOString()
             });
           
@@ -88,17 +89,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
                email: defaultProfile.email,
                role: defaultProfile.role,
                approval_status: defaultProfile.approval_status,
+               created_at: new Date().toISOString(),
                join_date: new Date().toISOString()
              }]);
 
            if (!createError || email.toLowerCase() === 'admin@ef.com') {
-             onLoginSuccess({
-               id: defaultProfile.id,
-               name: defaultProfile.name,
-               email: defaultProfile.email,
-               role: defaultProfile.role,
-               approvalStatus: defaultProfile.approval_status as any
-             });
+             onLoginSuccess(mapProfile(defaultProfile));
              return;
            }
            
@@ -109,14 +105,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           await supabase.auth.signOut();
           throw new Error('Account deactivated.');
         } else {
-          onLoginSuccess({
-            id: profile.id,
-            name: profile.name,
-            email: profile.email,
-            role: profile.role,
-            approvalStatus: profile.approval_status,
-            region: profile.region
-          });
+          onLoginSuccess(mapProfile(profile));
         }
       }
     } catch (err: any) {

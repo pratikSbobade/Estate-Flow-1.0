@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   Cell 
 } from 'recharts';
+import { supabase, mapProfile } from '../lib/supabase';
 import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions } from '../types';
 
 interface AdminPanelProps {
@@ -249,23 +250,56 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     localStorage.setItem('ef_user_registry', JSON.stringify(updated));
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget as HTMLFormElement);
-    const newUser: UserProfile = {
-      id: `U-${Math.random().toString(36).substr(2, 9)}`,
-      name: fd.get('name') as string,
-      email: fd.get('email') as string,
-      password: fd.get('password') as string || '12345',
-      role: fd.get('role') as string,
-      managerId: fd.get('managerId') as string || undefined,
-      approvalStatus: 'Approved',
-      createdAt: new Date().toISOString()
-    };
-    const updated = [...allUsers, newUser];
-    setAllUsers(updated);
-    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
-    setIsAddUserModalOpen(false);
+    const email = fd.get('email') as string;
+    const password = fd.get('password') as string || '12345';
+    const name = fd.get('name') as string;
+    const role = fd.get('role') as string;
+    const managerId = fd.get('managerId') as string || undefined;
+
+    try {
+      // 1. Create Auth User
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+          }
+        }
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('No user data returned from auth');
+
+      // 2. Create Profile in 'users' table
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          name,
+          email,
+          role,
+          manager_id: managerId,
+          approval_status: 'Approved',
+          created_at: new Date().toISOString()
+        });
+
+      if (profileError) throw profileError;
+
+      alert("User provisioned successfully!");
+      setIsAddUserModalOpen(false);
+      
+      // Refresh local state if needed (though it should ideally come from a real-time listener)
+      const { data: allProfiles } = await supabase.from('users').select('*');
+      if (allProfiles) setAllUsers(allProfiles.map(mapProfile));
+
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      alert(`Failed to create user: ${error.message || 'Database error creating new user'}`);
+    }
   };
 
   const handleCommitAssign = () => {
