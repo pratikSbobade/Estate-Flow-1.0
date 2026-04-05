@@ -45,7 +45,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
               name: name || 'New User',
               email: email,
               role: email.toLowerCase() === 'admin@ef.com' ? 'role_super_admin' : 'role_agent',
-              approval_status: 'Approved',
+              approval_status: email.toLowerCase() === 'admin@ef.com' ? 'Approved' : 'Pending',
               created_at: new Date().toISOString(),
               join_date: new Date().toISOString()
             });
@@ -78,7 +78,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
              name: authData.user.user_metadata?.name || 'User',
              email: authData.user.email || email,
              role: authData.user.user_metadata?.role || 'role_agent',
-             approval_status: 'Approved'
+             approval_status: email.toLowerCase() === 'admin@ef.com' ? 'Approved' : 'Pending'
            };
 
            const { error: createError } = await supabase
@@ -103,7 +103,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
         if (profile.approval_status === 'Deactivated') {
           await supabase.auth.signOut();
-          throw new Error('Account deactivated.');
+          throw new Error('Account deactivated. Please contact administrator.');
+        } else if (profile.approval_status === 'Pending') {
+          await supabase.auth.signOut();
+          throw new Error('Account pending approval. Please wait for an administrator to approve your access.');
+        } else if (profile.approval_status === 'Rejected') {
+          await supabase.auth.signOut();
+          throw new Error('Account access rejected. Please contact administrator.');
         } else {
           onLoginSuccess(mapProfile(profile));
         }

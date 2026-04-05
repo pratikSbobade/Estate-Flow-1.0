@@ -218,6 +218,40 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleApproveUser = async (userId: string, status: UserProfile['approvalStatus'], role?: string) => {
+    try {
+      const updateData: any = { approval_status: status };
+      if (role) updateData.role = role;
+
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      setFullUserRegistry(prev => prev.map(u => u.id === userId ? { ...u, approvalStatus: status, role: role || u.role } : u));
+      setSuccessMessage(`User ${status.toLowerCase()} successfully.`);
+    } catch (error) {
+      console.error('Error approving user:', error);
+      alert('Failed to update user status.');
+    }
+  };
+
+  const handleBulkImport = async (type: 'Clients' | 'Properties' | 'Visits', data: any[]) => {
+    try {
+      const table = type === 'Clients' ? 'clients' : type === 'Properties' ? 'properties' : 'site_visits';
+      const { error } = await supabase.from(table).insert(data);
+      if (error) throw error;
+
+      fetchData();
+      setSuccessMessage(`Bulk imported ${data.length} ${type.toLowerCase()} successfully.`);
+    } catch (error) {
+      console.error('Bulk import error:', error);
+      alert('Failed to import data.');
+    }
+  };
+
   const handleHeaderAdd = () => {
     if (location.pathname === '/clients') {
       setIsAddClientOpen(true);
@@ -258,7 +292,7 @@ const AppContent: React.FC = () => {
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(undefined); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
           <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} checkPermission={checkPermission} userRole={currentUser?.role} onSignOut={handleSignOut} />} />
           <Route path="/emi" element={<EmiCalculator />} />
-          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={() => {}} onApproveUser={() => {}} checkPermission={checkPermission} />} />
+          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={handleBulkImport} onApproveUser={handleApproveUser} checkPermission={checkPermission} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
