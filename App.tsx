@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Header from './components/Header';
@@ -10,6 +9,7 @@ import PropertiesPage from './pages/PropertiesPage';
 import ProfilePage from './pages/ProfilePage';
 import EmiCalculator from './pages/EmiCalculator';
 import AdminPanel from './pages/AdminPanel';
+import AuthPage from './pages/AuthPage';
 import { Client, Property, SiteVisit, UserProfile, CustomRole, ResourceType, ResourceAction } from './types';
 import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
@@ -31,23 +31,8 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
   </div>
 );
 
-const MOCK_USER: UserProfile = {
-  id: 'dev-user-001',
-  name: 'Rahul Singh',
-  email: 'admin@estateflow.com',
-  role: 'role_super_admin',
-  approvalStatus: 'Approved',
-  region: 'Nagpur Headquarters',
-  mobile: '+91 98765 43210',
-  whatsapp: '+91 98765 43210',
-  reraId: 'RERA-NAG-2023-441',
-  territory: 'Nagpur Headquarters',
-  joinDate: '2023-01-15',
-  photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200'
-};
-
 const AppContent: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(MOCK_USER);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isBookVisitOpen, setIsBookVisitOpen] = useState(false);
@@ -59,44 +44,127 @@ const AppContent: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [visits, setVisits] = useState<SiteVisit[]>([]);
-  const [fullUserRegistry, setFullUserRegistry] = useState<UserProfile[]>([MOCK_USER]);
-  const [loading, setLoading] = useState(false);
+  const [fullUserRegistry, setFullUserRegistry] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Check for active session on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          const { data: profile, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          if (profile && profile.approval_status !== 'Deactivated') {
+             setCurrentUser({
+               id: profile.id,
+               name: profile.name,
+               email: profile.email,
+               role: profile.role,
+               approvalStatus: profile.approval_status,
+               region: profile.region,
+               mobile: profile.mobile,
+               whatsapp: profile.whatsapp,
+               reraId: profile.rera_id,
+               territory: profile.territory,
+               joinDate: profile.join_date,
+               photo: profile.photo,
+               managerId: profile.manager_id
+             });
+          }
+        }
+      } catch (e) {
+        console.error("Session check failed", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkSession();
+
+    // Listen for auth state changes (e.g. sign out from another tab)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const checkPermission = useCallback((resource: ResourceType, action: ResourceAction = 'Read') => {
     if (!currentUser) return false;
     if (currentUser.role === 'role_super_admin') return true;
-    return true; 
+    
+    // Logic to check permissions based on custom roles from localStorage or context
+    const customRoles = JSON.parse(localStorage.getItem('ef_custom_roles') || '[]');
+    const userRoleDef = customRoles.find((r: any) => r.id === currentUser.role);
+    
+    if (userRoleDef) {
+      return userRoleDef.permissions?.[resource]?.[action] || false;
+    }
+    
+    // Fallback for default 'role_agent' if not in custom roles (though it should be)
+    if (currentUser.role === 'role_agent') {
+       const isSales = ['Leads', 'Properties', 'Site Visits', 'WhatsApp'].includes(resource);
+       return isSales && action !== 'Delete';
+    }
+
+    return false;
   }, [currentUser]);
 
   const fetchData = async () => {
+    if (!currentUser) return;
     try {
       const [clientsRes, propertiesRes, visitsRes, usersRes] = await Promise.all([
-        supabase.from('clients').select('*').order('created_at', { ascending: false }),
+        supabase.from('clients').select('*').order('createdAt', { ascending: false }),
         supabase.from('properties').select('*').order('id', { ascending: false }),
-        supabase.from('site_visits').select('*').order('scheduled_at', { ascending: false }),
+        supabase.from('site_visits').select('*').order('scheduledAt', { ascending: false }),
         supabase.from('users').select('*')
       ]);
 
       if (clientsRes.data) setClients(clientsRes.data);
       if (propertiesRes.data) setProperties(propertiesRes.data);
       if (visitsRes.data) setVisits(visitsRes.data);
-      if (usersRes.data) setFullUserRegistry(usersRes.data);
+      if (usersRes.data) setFullUserRegistry(usersRes.data.map((u: any) => ({
+        ...u,
+        approvalStatus: u.approval_status, // Map snake_case from DB
+        reraId: u.rera_id,
+        joinDate: u.join_date,
+        managerId: u.manager_id
+      })));
     } catch (error) {
       console.error('Error fetching data:', error);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setClients([]);
+    setProperties([]);
+    setVisits([]);
+    navigate('/');
+  };
 
   const handleAddVisit = async (newVisit: SiteVisit) => {
     setVisits(prev => [newVisit, ...prev]);
@@ -161,10 +229,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleSignOut = () => {
-    navigate('/');
-  };
-
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col items-center gap-4">
@@ -173,6 +237,10 @@ const AppContent: React.FC = () => {
       </div>
     </div>
   );
+
+  if (!currentUser) {
+    return <AuthPage onLoginSuccess={(user) => setCurrentUser(user)} />;
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-300">

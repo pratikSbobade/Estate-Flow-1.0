@@ -304,7 +304,7 @@ const VisitsPage: React.FC<VisitsPageProps> = ({
             <ClientVisitGroup 
               key={group.client?.id || Math.random()} 
               group={group} 
-              onAction={(visit, type) => setActiveModal({ visit, type })} 
+              onAction={(visit: SiteVisit, type: 'feedback' | 'reschedule' | 'cancel' | 'details' | 'share_details' | 'schedule_second') => setActiveModal({ visit, type })} 
               highlightedVisitId={highlightedVisitId} 
               onNextAction={handlePerformNextAction}
               properties={properties}
