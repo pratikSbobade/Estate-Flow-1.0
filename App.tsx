@@ -32,7 +32,13 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
 );
 
 const AppContent: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>({
+    id: '00000000-0000-0000-0000-000000000000',
+    name: 'Admin User',
+    email: 'admin@ef.com',
+    role: 'role_super_admin',
+    approvalStatus: 'Approved'
+  });
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isBookVisitOpen, setIsBookVisitOpen] = useState(false);
@@ -159,7 +165,13 @@ const AppContent: React.FC = () => {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setCurrentUser(null);
+    setCurrentUser({
+      id: '00000000-0000-0000-0000-000000000000',
+      name: 'Admin User',
+      email: 'admin@ef.com',
+      role: 'role_super_admin',
+      approvalStatus: 'Approved'
+    });
     setClients([]);
     setProperties([]);
     setVisits([]);
@@ -272,9 +284,10 @@ const AppContent: React.FC = () => {
     </div>
   );
 
-  if (!currentUser) {
-    return <AuthPage onLoginSuccess={(user) => setCurrentUser(user)} />;
-  }
+  // Remove authentication bypass if needed, currently always renders app
+  // if (!currentUser) {
+  //   return <AuthPage onLoginSuccess={(user) => setCurrentUser(user)} />;
+  // }
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-300">
