@@ -14,15 +14,18 @@ const Footer: React.FC<FooterProps> = ({ role, checkPermission }) => {
 
   // Core navigation items focusing on CRM data modules
   const allNavItems = [
-    { label: 'Clients', icon: 'fa-users', path: '/clients', resource: 'Leads' as ResourceType },
+    { label: 'Home', icon: 'fa-home', path: '/', resource: 'Dashboard' as any },
+    { label: 'Leads', icon: 'fa-users', path: '/clients', resource: 'Leads' as ResourceType },
     { label: 'Properties', icon: 'fa-building', path: '/properties', resource: 'Properties' as ResourceType },
-    { label: 'Visits', icon: 'fa-calendar-check', path: '/visits', resource: 'Site Visits' as ResourceType },
+    { label: 'Site Visit', icon: 'fa-calendar-check', path: '/visits', resource: 'Site Visits' as ResourceType },
+    { label: 'Profile', icon: 'fa-user-circle', path: '/profile', resource: 'Profile' as any },
   ];
 
   // Filter items based on user permissions
-  const navItems = allNavItems.filter(item => 
-    checkPermission ? checkPermission(item.resource) : true
-  );
+  const navItems = allNavItems.filter(item => {
+    if (item.path === '/' || item.path === '/profile') return true;
+    return checkPermission ? checkPermission(item.resource) : true;
+  });
 
   const isActive = (path: string) => location.pathname === path;
 

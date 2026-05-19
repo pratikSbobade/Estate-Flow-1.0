@@ -4,7 +4,6 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   Cell 
 } from 'recharts';
-import { supabase, mapProfile } from '../lib/supabase';
 import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions } from '../types';
 
 interface AdminPanelProps {
@@ -250,56 +249,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     localStorage.setItem('ef_user_registry', JSON.stringify(updated));
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget as HTMLFormElement);
-    const email = fd.get('email') as string;
-    const password = fd.get('password') as string || '12345';
-    const name = fd.get('name') as string;
-    const role = fd.get('role') as string;
-    const managerId = fd.get('managerId') as string || undefined;
-
-    try {
-      // 1. Create Auth User
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: name,
-          }
-        }
-      });
-
-      if (authError) throw authError;
-      if (!authData.user) throw new Error('No user data returned from auth');
-
-      // 2. Create Profile in 'users' table
-      const { error: profileError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          name,
-          email,
-          role,
-          manager_id: managerId,
-          approval_status: 'Approved',
-          created_at: new Date().toISOString()
-        });
-
-      if (profileError) throw profileError;
-
-      alert("User provisioned successfully!");
-      setIsAddUserModalOpen(false);
-      
-      // Refresh local state if needed (though it should ideally come from a real-time listener)
-      const { data: allProfiles } = await supabase.from('users').select('*');
-      if (allProfiles) setAllUsers(allProfiles.map(mapProfile));
-
-    } catch (error: any) {
-      console.error('Error creating user:', error);
-      alert(`Failed to create user: ${error.message || 'Database error creating new user'}`);
-    }
+    const newUser: UserProfile = {
+      id: `U-${Math.random().toString(36).substr(2, 9)}`,
+      name: fd.get('name') as string,
+      email: fd.get('email') as string,
+      password: fd.get('password') as string || '12345',
+      role: fd.get('role') as string,
+      managerId: fd.get('managerId') as string || undefined,
+      approvalStatus: 'Approved',
+      createdAt: new Date().toISOString()
+    };
+    const updated = [...allUsers, newUser];
+    setAllUsers(updated);
+    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+    setIsAddUserModalOpen(false);
   };
 
   const handleCommitAssign = () => {
@@ -565,43 +531,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
            </div>
 
            {teamSubTab === 'registry' && (
-             <div className="space-y-10">
-                {pendingUsers.length > 0 && (
-                  <div className="space-y-6 animate-pulse-slow">
-                    <div className="flex items-center gap-3 px-2">
-                      <div className="w-1.5 h-6 bg-amber-500 rounded-full"></div>
-                      <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Pending Approvals ({pendingUsers.length})</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {pendingUsers.map(user => (
-                        <div key={user.id} className="card-neo p-6 rounded-[2.5rem] bg-amber-50/30 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 flex items-center justify-between group">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/40 text-amber-600 rounded-2xl flex items-center justify-center font-black text-sm uppercase">{user.name[0]}</div>
-                            <div>
-                              <p className="text-xs font-black text-slate-800 dark:text-white uppercase leading-tight">{user.name}</p>
-                              <p className="text-[10px] font-bold text-slate-400">{user.email}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={() => onApproveUser(user.id, 'Rejected')}
-                              className="w-10 h-10 bg-white dark:bg-slate-800 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-900/30 hover:bg-red-500 hover:text-white transition-all"
-                            >
-                              <i className="fas fa-times text-xs"></i>
-                            </button>
-                            <button 
-                              onClick={() => onApproveUser(user.id, 'Approved')}
-                              className="px-6 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-600 shadow-lg shadow-emerald-200 dark:shadow-none transition-all"
-                            >
-                              Approve Access
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
+             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>

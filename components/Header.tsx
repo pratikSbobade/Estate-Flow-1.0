@@ -29,8 +29,8 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
 
   const getPageTitle = () => {
     switch (location.pathname) {
-      case '/clients': return 'Clients';
-      case '/visits': return 'Site Visits';
+      case '/clients': return 'Leads';
+      case '/visits': return 'Site Visit';
       case '/properties': return 'Properties';
       case '/emi': return 'EMI Calc';
       case '/profile': return 'My Profile';
@@ -55,7 +55,7 @@ const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange, onAddClick
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {role === 'role_admin' && (
+          {(role === 'role_admin' || role === 'role_super_admin') && (
             <button 
               onClick={() => navigate('/admin')}
               className={`w-9 h-9 btn-3d flex items-center justify-center rounded-xl transition-all ${

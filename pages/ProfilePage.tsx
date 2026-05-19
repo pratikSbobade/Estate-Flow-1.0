@@ -71,15 +71,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     <div className="space-y-8 animate-slide-up pb-28">
       {/* Header Profile Card */}
       <div className="bg-white dark:bg-slate-800 p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-slate-700 transition-all flex flex-col items-center text-center relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 flex gap-3">
-           <button 
-             onClick={onSignOut}
-             className="w-10 h-10 bg-red-50 dark:bg-red-900/30 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-800 shadow-sm hover:bg-red-500 hover:text-white transition-all"
-             title="Sign Out"
-           >
-             <i className="fas fa-sign-out-alt text-sm"></i>
-           </button>
-        </div>
+        {/* Sign Out Button Removed since login is removed */}
 
         <div className="relative group mb-6 mt-10 sm:mt-0">
           <div className="w-36 h-36 bg-slate-100 dark:bg-slate-700 rounded-[3rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-2xl relative">

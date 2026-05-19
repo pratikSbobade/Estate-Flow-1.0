@@ -180,7 +180,7 @@ const VisitsPage: React.FC<VisitsPageProps> = ({
           >
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 transition-colors">
-                {nextActionFilter || 'Visit Management'}
+                {nextActionFilter || 'Site Visit'}
               </h1>
               <i className={`fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-indigo-600 transition-transform duration-300 ${isNextActionDropdownOpen ? 'rotate-180' : ''}`}></i>
             </div>

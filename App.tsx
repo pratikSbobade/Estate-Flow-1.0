@@ -9,12 +9,22 @@ import PropertiesPage from './pages/PropertiesPage';
 import ProfilePage from './pages/ProfilePage';
 import EmiCalculator from './pages/EmiCalculator';
 import AdminPanel from './pages/AdminPanel';
-import AuthPage from './pages/AuthPage';
-import { Client, Property, SiteVisit, UserProfile, CustomRole, ResourceType, ResourceAction } from './types';
+// AuthPage import removed
+import { Client, Property, SiteVisit, UserProfile, CustomRole, ResourceType, ResourceAction, UserRole } from './types';
 import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
 import BookVisitModal from './components/BookVisitModal';
 import { supabase } from './lib/supabase';
+
+// Default user for guest/no-auth mode
+const GUEST_USER: UserProfile = {
+  id: 'guest-admin',
+  name: 'Terminal Admin', 
+  email: 'admin@ef.com',
+  role: 'role_super_admin',
+  approvalStatus: 'Approved',
+  joinDate: new Date().toISOString()
+};
 
 const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => (
   <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex items-center justify-center p-6">
@@ -32,13 +42,7 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
 );
 
 const AppContent: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>({
-    id: '00000000-0000-0000-0000-000000000000',
-    name: 'Admin User',
-    email: 'admin@ef.com',
-    role: 'role_super_admin',
-    approvalStatus: 'Approved'
-  });
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(GUEST_USER);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isBookVisitOpen, setIsBookVisitOpen] = useState(false);
@@ -56,54 +60,9 @@ const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Check for active session on mount
+  // Session check removed as we are in auto-login mode
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          const { data: profile, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (profile && profile.approval_status !== 'Deactivated') {
-             setCurrentUser({
-               id: profile.id,
-               name: profile.name,
-               email: profile.email,
-               role: profile.role,
-               approvalStatus: profile.approval_status,
-               region: profile.region,
-               mobile: profile.mobile,
-               whatsapp: profile.whatsapp,
-               reraId: profile.rera_id,
-               territory: profile.territory,
-               joinDate: profile.join_date,
-               photo: profile.photo,
-               managerId: profile.manager_id
-             });
-          }
-        }
-      } catch (e) {
-        console.error("Session check failed", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    checkSession();
-
-    // Listen for auth state changes (e.g. sign out from another tab)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setCurrentUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    setLoading(false);
   }, []);
 
   const checkPermission = useCallback((resource: ResourceType, action: ResourceAction = 'Read') => {
@@ -164,17 +123,7 @@ const AppContent: React.FC = () => {
   }, [theme]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setCurrentUser({
-      id: '00000000-0000-0000-0000-000000000000',
-      name: 'Admin User',
-      email: 'admin@ef.com',
-      role: 'role_super_admin',
-      approvalStatus: 'Approved'
-    });
-    setClients([]);
-    setProperties([]);
-    setVisits([]);
+    // Navigate home instead of real sign out
     navigate('/');
   };
 
@@ -230,40 +179,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleApproveUser = async (userId: string, status: UserProfile['approvalStatus'], role?: string) => {
-    try {
-      const updateData: any = { approval_status: status };
-      if (role) updateData.role = role;
-
-      const { error } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      setFullUserRegistry(prev => prev.map(u => u.id === userId ? { ...u, approvalStatus: status, role: role || u.role } : u));
-      setSuccessMessage(`User ${status.toLowerCase()} successfully.`);
-    } catch (error) {
-      console.error('Error approving user:', error);
-      alert('Failed to update user status.');
-    }
-  };
-
-  const handleBulkImport = async (type: 'Clients' | 'Properties' | 'Visits', data: any[]) => {
-    try {
-      const table = type === 'Clients' ? 'clients' : type === 'Properties' ? 'properties' : 'site_visits';
-      const { error } = await supabase.from(table).insert(data);
-      if (error) throw error;
-
-      fetchData();
-      setSuccessMessage(`Bulk imported ${data.length} ${type.toLowerCase()} successfully.`);
-    } catch (error) {
-      console.error('Bulk import error:', error);
-      alert('Failed to import data.');
-    }
-  };
-
   const handleHeaderAdd = () => {
     if (location.pathname === '/clients') {
       setIsAddClientOpen(true);
@@ -284,11 +199,7 @@ const AppContent: React.FC = () => {
     </div>
   );
 
-  // Remove authentication bypass if needed, currently always renders app
-  // if (!currentUser) {
-  //   return <AuthPage onLoginSuccess={(user) => setCurrentUser(user)} />;
-  // }
-
+  /* No auth guard needed */
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-300">
       <Header 
@@ -305,7 +216,7 @@ const AppContent: React.FC = () => {
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(undefined); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
           <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} checkPermission={checkPermission} userRole={currentUser?.role} onSignOut={handleSignOut} />} />
           <Route path="/emi" element={<EmiCalculator />} />
-          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={handleBulkImport} onApproveUser={handleApproveUser} checkPermission={checkPermission} />} />
+          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={() => {}} onApproveUser={() => {}} checkPermission={checkPermission} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
