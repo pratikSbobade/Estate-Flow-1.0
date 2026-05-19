@@ -14,18 +14,15 @@ const Footer: React.FC<FooterProps> = ({ role, checkPermission }) => {
 
   // Core navigation items focusing on CRM data modules
   const allNavItems = [
-    { label: 'Home', icon: 'fa-home', path: '/', resource: 'Dashboard' as any },
     { label: 'Leads', icon: 'fa-users', path: '/clients', resource: 'Leads' as ResourceType },
-    { label: 'Properties', icon: 'fa-building', path: '/properties', resource: 'Properties' as ResourceType },
     { label: 'Site Visit', icon: 'fa-calendar-check', path: '/visits', resource: 'Site Visits' as ResourceType },
-    { label: 'Profile', icon: 'fa-user-circle', path: '/profile', resource: 'Profile' as any },
+    { label: 'Properties', icon: 'fa-building', path: '/properties', resource: 'Properties' as ResourceType },
   ];
 
   // Filter items based on user permissions
-  const navItems = allNavItems.filter(item => {
-    if (item.path === '/' || item.path === '/profile') return true;
-    return checkPermission ? checkPermission(item.resource) : true;
-  });
+  const navItems = allNavItems.filter(item => 
+    checkPermission ? checkPermission(item.resource) : true
+  );
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -33,8 +30,8 @@ const Footer: React.FC<FooterProps> = ({ role, checkPermission }) => {
   if (navItems.length === 0) return null;
 
   return (
-    <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-lg bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl px-4 py-3 rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] z-[100] border border-white/40 dark:border-slate-700/50 transition-all duration-300">
-      <div className="flex items-center justify-between gap-1">
+    <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-sm bg-white/40 dark:bg-slate-900/40 backdrop-blur-2xl px-6 py-4 rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.35)] z-[100] border border-white/40 dark:border-slate-800/50 transition-all duration-300">
+      <div className="flex items-center justify-around gap-2">
         {navItems.map((item) => (
           <button
             key={item.path}
