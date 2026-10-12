@@ -4,12 +4,12 @@
 -- Helpers (security definer so policies can read users without recursion)
 create or replace function public.ef_is_approved() returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from users where id = auth.uid()::text and approval_status = 'Approved');
+  select exists (select 1 from users where id = auth.uid() and approval_status = 'Approved');
 $$;
 
 create or replace function public.ef_is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from users where id = auth.uid()::text and approval_status = 'Approved'
+  select exists (select 1 from users where id = auth.uid() and approval_status = 'Approved'
                  and role in ('role_super_admin', 'role_admin'));
 $$;
 
@@ -44,10 +44,10 @@ drop policy if exists "ef_users_admin_update" on users;
 
 -- Everyone sees their own row; approved users see the team.
 create policy "ef_users_read" on users for select to authenticated
-  using (id = auth.uid()::text or ef_is_approved());
+  using (id = auth.uid() or ef_is_approved());
 -- A new sign-up can only create its own row, as a Pending agent.
 create policy "ef_users_self_signup" on users for insert to authenticated
-  with check (id = auth.uid()::text and approval_status = 'Pending' and role = 'role_agent');
+  with check (id = auth.uid() and approval_status = 'Pending' and role = 'role_agent');
 -- Admins add teammates and approve / change roles.
 create policy "ef_users_admin_insert" on users for insert to authenticated with check (ef_is_admin());
 create policy "ef_users_admin_update" on users for update to authenticated using (ef_is_admin()) with check (ef_is_admin());
