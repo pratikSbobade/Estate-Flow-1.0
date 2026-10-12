@@ -9,3 +9,10 @@ const supabaseUrl = 'https://vkyfgxrwgrzcernmhbyk.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreWZneHJ3Z3J6Y2Vybm1oYnlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MDI3MTIsImV4cCI6MjA4NTM3ODcxMn0.fr43n2DiJliK7oVFlVJ2yNy2ySiSbU8RNY98MPnbPLU';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// A separate client that does not store a session. Used by admins to create
+// accounts for teammates without logging themselves out.
+export const createIsolatedClient = () =>
+  createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'ef-provision' },
+  });

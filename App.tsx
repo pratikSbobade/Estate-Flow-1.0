@@ -15,16 +15,28 @@ import AddClientModal from './components/AddClientModal';
 import AddPropertyModal from './components/AddPropertyModal';
 import BookVisitModal from './components/BookVisitModal';
 import { supabase } from './lib/supabase';
+import { userFromDb, updateUser } from './lib/users';
+import AuthPage from './pages/AuthPage';
+import type { Session } from '@supabase/supabase-js';
 
-// Default user for guest/no-auth mode
-const GUEST_USER: UserProfile = {
-  id: 'guest-admin',
-  name: 'Terminal Admin', 
-  email: 'admin@ef.com',
-  role: 'role_super_admin',
-  approvalStatus: 'Approved',
-  joinDate: new Date().toISOString()
-};
+const AccessScreen: React.FC<{ user: UserProfile; onSignOut: () => void; onRefresh: () => void }> = ({ user, onSignOut, onRefresh }) => (
+  <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
+    <div className="w-full max-w-sm bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-2xl text-center space-y-5">
+      <h2 className="text-xl font-black text-slate-800 dark:text-white">
+        {user.approvalStatus === 'Pending' ? 'Waiting for approval' : 'Access disabled'}
+      </h2>
+      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+        {user.approvalStatus === 'Pending'
+          ? `Signed in as ${user.email}. An admin needs to approve your account before you can use Estate Flow.`
+          : `The account ${user.email} is ${user.approvalStatus.toLowerCase()}. Contact your admin.`}
+      </p>
+      <div className="flex gap-3">
+        <button onClick={onRefresh} className="flex-1 py-3 btn-3d btn-3d-indigo text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">Check again</button>
+        <button onClick={onSignOut} className="flex-1 py-3 btn-3d btn-3d-white rounded-2xl font-black text-[10px] uppercase tracking-widest">Sign out</button>
+      </div>
+    </div>
+  </div>
+);
 
 const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => (
   <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex items-center justify-center p-6">
@@ -42,7 +54,8 @@ const SuccessPopup: React.FC<{ message: string; onClose: () => void }> = ({ mess
 );
 
 const AppContent: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(GUEST_USER);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isBookVisitOpen, setIsBookVisitOpen] = useState(false);
@@ -60,14 +73,58 @@ const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Session check removed as we are in auto-login mode
+  // Loads (or creates) the profile row for the signed-in user.
+  const loadProfile = async (sess: Session | null) => {
+    if (!sess) { setCurrentUser(null); return; }
+    const uid = sess.user.id;
+    let { data, error } = await supabase.from('users').select('*').eq('id', uid).maybeSingle();
+    if (!data && !error) {
+      // First sign-in: create a pending profile; an admin approves it.
+      const meta = sess.user.user_metadata || {};
+      const res = await supabase.from('users').insert([{
+        id: uid,
+        email: sess.user.email,
+        name: meta.name || sess.user.email,
+        role: 'role_agent',
+        approval_status: 'Pending',
+        join_date: new Date().toISOString(),
+      }]).select().single();
+      data = res.data; error = res.error;
+    }
+    if (error) {
+      console.error('Profile load failed:', error);
+      alert(`Could not load your profile: ${error.message}`);
+      setCurrentUser(null);
+      return;
+    }
+    setCurrentUser(userFromDb(data));
+  };
+
   useEffect(() => {
-    setLoading(false);
+    supabase.auth.getSession().then(async ({ data }) => {
+      setSession(data.session);
+      await loadProfile(data.session);
+      setLoading(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
+      setSession(sess);
+      if (event === 'PASSWORD_RECOVERY') {
+        const pw = window.prompt('Enter a new password (min 6 characters):');
+        if (pw) supabase.auth.updateUser({ password: pw }).then(({ error }) => alert(error ? error.message : 'Password updated.'));
+      }
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+        // defer to avoid calling Supabase inside the auth callback
+        setTimeout(() => loadProfile(sess), 0);
+      }
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
+
+  const isApproved = currentUser?.approvalStatus === 'Approved';
 
   const checkPermission = useCallback((resource: ResourceType, action: ResourceAction = 'Read') => {
     if (!currentUser) return false;
-    if (currentUser.role === 'role_super_admin') return true;
+    if (currentUser.role === 'role_super_admin' || currentUser.role === 'role_admin') return true;
     
     // Logic to check permissions based on custom roles from localStorage or context
     const customRoles = JSON.parse(localStorage.getItem('ef_custom_roles') || '[]');
@@ -87,7 +144,7 @@ const AppContent: React.FC = () => {
   }, [currentUser]);
 
   const fetchData = async () => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.approvalStatus !== 'Approved') return;
     try {
       const [clientsRes, propertiesRes, visitsRes, usersRes] = await Promise.all([
         supabase.from('clients').select('*').order('createdAt', { ascending: false }),
@@ -99,23 +156,19 @@ const AppContent: React.FC = () => {
       if (clientsRes.data) setClients(clientsRes.data);
       if (propertiesRes.data) setProperties(propertiesRes.data);
       if (visitsRes.data) setVisits(visitsRes.data);
-      if (usersRes.data) setFullUserRegistry(usersRes.data.map((u: any) => ({
-        ...u,
-        approvalStatus: u.approval_status, // Map snake_case from DB
-        reraId: u.rera_id,
-        joinDate: u.join_date,
-        managerId: u.manager_id
-      })));
+      if (usersRes.data) setFullUserRegistry(usersRes.data.map(userFromDb));
+      const firstError = [clientsRes, propertiesRes, visitsRes, usersRes].find(r => r.error)?.error;
+      if (firstError) console.error('Error fetching data:', firstError);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
   };
 
   useEffect(() => {
-    if (currentUser) {
+    if (isApproved) {
       fetchData();
     }
-  }, [currentUser]);
+  }, [currentUser?.id, isApproved]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -123,7 +176,9 @@ const AppContent: React.FC = () => {
   }, [theme]);
 
   const handleSignOut = async () => {
-    // Navigate home instead of real sign out
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setClients([]); setProperties([]); setVisits([]); setFullUserRegistry([]);
     navigate('/');
   };
 
@@ -198,7 +253,14 @@ const AppContent: React.FC = () => {
     </div>
   );
 
-  /* No auth guard needed */
+  if (!session) return <AuthPage />;
+  if (!currentUser) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <button onClick={handleSignOut} className="text-xs font-bold text-indigo-600">Could not load profile — sign out</button>
+    </div>
+  );
+  if (!isApproved) return <AccessScreen user={currentUser} onSignOut={handleSignOut} onRefresh={() => loadProfile(session)} />;
+
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-300">
       <Header 
@@ -213,9 +275,9 @@ const AppContent: React.FC = () => {
           <Route path="/clients" element={<ClientsPage clients={clients} visits={visits} properties={properties} searchQuery={searchQuery} onAddClient={() => setIsAddClientOpen(true)} onUpdateClient={handleAddClient} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
           <Route path="/visits" element={<VisitsPage visits={visits} searchQuery={searchQuery} onUpdateVisit={handleUpdateVisit} onAddVisit={handleAddVisit} onManualAddClick={() => setIsBookVisitOpen(true)} clients={clients} properties={properties} onUpdateClient={handleAddClient} checkPermission={checkPermission} />} />
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(undefined); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
-          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} checkPermission={checkPermission} userRole={currentUser?.role} onSignOut={handleSignOut} />} />
+          <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} checkPermission={checkPermission} userRole={currentUser?.role} currentUser={currentUser} onSignOut={handleSignOut} />} />
           <Route path="/emi" element={<EmiCalculator />} />
-          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={handleBulkImport} onApproveUser={() => {}} checkPermission={checkPermission} />} />
+          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} currentUserId={currentUser.id} onUsersChanged={fetchData} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={handleBulkImport} onApproveUser={async (id, status, role) => { if (await updateUser(id, { approvalStatus: status, ...(role ? { role } : {}) })) await fetchData(); }} checkPermission={checkPermission} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

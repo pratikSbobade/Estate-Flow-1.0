@@ -6,12 +6,17 @@ import {
 } from 'recharts';
 import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions } from '../types';
 import { newId } from '../lib/id';
+import { createIsolatedClient, supabase } from '../lib/supabase';
+import { updateUser } from '../lib/users';
 
 interface AdminPanelProps {
   clients: Client[];
   properties: Property[];
   visits: SiteVisit[];
   pendingUsers: UserProfile[];
+  allUsers: UserProfile[];
+  currentUserId: string;
+  onUsersChanged: () => void | Promise<void>;
   onBulkImport: (type: 'Clients' | 'Properties' | 'Visits', data: any[]) => void;
   onApproveUser: (userId: string, status: UserProfile['approvalStatus'], role?: string) => void;
   checkPermission: (resource: ResourceType, action?: ResourceAction) => boolean;
@@ -39,7 +44,7 @@ const CSV_SCHEMAS = {
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-  clients, properties, visits, pendingUsers, onBulkImport, onApproveUser, checkPermission, userRole 
+  clients, properties, visits, pendingUsers, allUsers, currentUserId, onUsersChanged, onBulkImport, onApproveUser, checkPermission, userRole 
 }) => {
   const canSeeTeam = checkPermission('Admin: Team');
   const canSeeRoles = checkPermission('Admin: Roles');
@@ -222,66 +227,62 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     localStorage.setItem('ef_wa_templates', JSON.stringify(updated));
   };
 
-  // --- User Management ---
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  useEffect(() => {
-    const registryJson = localStorage.getItem('ef_user_registry');
-    if (registryJson) setAllUsers(JSON.parse(registryJson));
-  }, [pendingUsers]);
-
-  const handleUpdateUserRole = (userId: string, role: string) => {
-    const updated = allUsers.map(u => u.id === userId ? { ...u, role } : u);
-    setAllUsers(updated);
-    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+  // --- User Management (stored in Supabase `users` table) ---
+  const handleUpdateUserRole = async (userId: string, role: string) => {
+    if (await updateUser(userId, { role })) await onUsersChanged();
   };
 
-  const handleToggleUserStatus = (userId: string) => {
-    const updated = allUsers.map(u => {
-      if (u.id === userId) {
-        const newStatus = u.approvalStatus === 'Deactivated' ? 'Approved' : 'Deactivated';
-        return { ...u, approvalStatus: newStatus as any };
-      }
-      return u;
-    });
-    setAllUsers(updated);
-    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+  const handleToggleUserStatus = async (userId: string) => {
+    if (userId === currentUserId) { alert("You can't deactivate your own account."); return; }
+    const u = allUsers.find(x => x.id === userId);
+    if (!u) return;
+    const newStatus = u.approvalStatus === 'Deactivated' ? 'Approved' : 'Deactivated';
+    if (await updateUser(userId, { approvalStatus: newStatus })) await onUsersChanged();
   };
 
-  const handleDeleteUser = (userId: string) => {
-    if (!window.confirm("Permanently delete this user?")) return;
-    const updated = allUsers.filter(u => u.id !== userId);
-    setAllUsers(updated);
-    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+  const handleDeleteUser = async (userId: string) => {
+    if (userId === currentUserId) { alert("You can't delete your own account."); return; }
+    if (!window.confirm("Remove this user's access? (Their login still exists but they will no longer see any data.)")) return;
+    const { error } = await supabase.from('users').update({ approval_status: 'Rejected' }).eq('id', userId);
+    if (error) alert(`Could not remove user: ${error.message}`);
+    else await onUsersChanged();
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget as HTMLFormElement);
-    const newUser: UserProfile = {
-      id: `U-${Math.random().toString(36).substr(2, 9)}`,
+    const email = (fd.get('email') as string).trim();
+    const password = (fd.get('password') as string) || '';
+    if (password.length < 6) { alert('Set an initial password of at least 6 characters.'); return; }
+    // Create the login with a separate client so the admin stays signed in.
+    const { data, error } = await createIsolatedClient().auth.signUp({
+      email, password, options: { data: { name: fd.get('name') as string } },
+    });
+    if (error || !data.user) { alert(`Could not create login: ${error?.message || 'unknown error'}`); return; }
+    if (data.user.identities && data.user.identities.length === 0) { alert('An account with this email already exists. Ask them to sign in, then approve them under Pending.'); return; }
+    const { error: profileError } = await supabase.from('users').upsert([{
+      id: data.user.id,
       name: fd.get('name') as string,
-      email: fd.get('email') as string,
-      password: fd.get('password') as string || '12345',
+      email,
       role: fd.get('role') as string,
-      managerId: fd.get('managerId') as string || undefined,
-      approvalStatus: 'Approved',
-      createdAt: new Date().toISOString()
-    };
-    const updated = [...allUsers, newUser];
-    setAllUsers(updated);
-    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+      manager_id: (fd.get('managerId') as string) || null,
+      approval_status: 'Approved',
+      join_date: new Date().toISOString(),
+    }]);
+    if (profileError) { alert(`Login created but profile failed: ${profileError.message}`); return; }
     setIsAddUserModalOpen(false);
+    await onUsersChanged();
+    alert(`Account created for ${email}. If email confirmation is on in Supabase, they must confirm their email before signing in.`);
   };
 
-  const handleCommitAssign = () => {
+  const handleCommitAssign = async () => {
     if (!selectedAssigneeId || !selectedManagerId) return;
     if (selectedAssigneeId === selectedManagerId) {
       alert("A user cannot report to themselves.");
       return;
     }
-    const updated = allUsers.map(u => u.id === selectedAssigneeId ? { ...u, managerId: selectedManagerId } : u);
-    setAllUsers(updated);
-    localStorage.setItem('ef_user_registry', JSON.stringify(updated));
+    if (!(await updateUser(selectedAssigneeId, { managerId: selectedManagerId }))) return;
+    await onUsersChanged();
     alert("Hierarchy updated successfully.");
     setSelectedAssigneeId(null);
     setSelectedManagerId(null);
@@ -537,6 +538,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
            {teamSubTab === 'registry' && (
              <div className="space-y-6">
+                {pendingUsers.length > 0 && (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-[2rem] p-6 space-y-4">
+                    <h3 className="text-sm font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">Pending approval ({pendingUsers.length})</h3>
+                    {pendingUsers.map(u => (
+                      <div key={u.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-800 rounded-2xl p-4">
+                        <div>
+                          <p className="text-sm font-black text-slate-800 dark:text-white">{u.name}</p>
+                          <p className="text-[11px] font-bold text-slate-400">{u.email}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <select id={`role-${u.id}`} defaultValue="role_agent" className="p-2 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-xl text-[10px] font-black dark:text-white">
+                            {customRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          </select>
+                          <button onClick={() => onApproveUser(u.id, 'Approved', (document.getElementById(`role-${u.id}`) as HTMLSelectElement)?.value)} className="px-4 py-2 btn-3d btn-3d-emerald text-white rounded-xl text-[10px] font-black uppercase">Approve</button>
+                          <button onClick={() => onApproveUser(u.id, 'Rejected')} className="px-4 py-2 btn-3d btn-3d-red text-white rounded-xl text-[10px] font-black uppercase">Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
@@ -699,7 +721,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <form onSubmit={handleCreateUser} className="p-10 space-y-5">
                  <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity</label><input name="name" required placeholder="Full Name" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-600 transition-all" /></div>
                  <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Corporate Email</label><input name="email" type="email" required placeholder="Email Address" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-colors" /></div>
-                 <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Initial Password</label><input name="password" type="text" placeholder="Default: 12345" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-all" /></div>
+                 <div className="space-y-1.5"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Initial Password</label><input name="password" type="text" required minLength={6} placeholder="Min 6 characters" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold dark:text-white outline-none focus:border-indigo-500 transition-all" /></div>
                  <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Authority Tier</label>
                     <select name="role" required className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-black dark:text-white outline-none focus:border-indigo-600 transition-all transition-colors">{customRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>

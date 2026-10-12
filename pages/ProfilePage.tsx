@@ -17,10 +17,11 @@ interface ProfilePageProps {
   onSwitchRole?: (role: string) => void;
   checkPermission: (resource: ResourceType, action?: ResourceAction) => boolean;
   onSignOut?: () => void;
+  currentUser?: UserProfile | null;
 }
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ 
-  clients, properties, visits, allUsers = [], userRole, onUpdateClient, checkPermission, onSignOut
+  clients, properties, visits, allUsers = [], userRole, onUpdateClient, checkPermission, onSignOut, currentUser
 }) => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,16 +30,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [activeTab, setActiveTab] = useState<'dossier' | 'performance' | 'hub'>('dossier');
 
   const [profileData, setProfileData] = useState<Partial<UserProfile>>({
-    name: 'Rahul Singh',
-    id: 'ADMIN-01',
-    role: userRole || 'Super Admin',
-    email: 'rahul.singh@estateflow.com',
-    mobile: '+91 98765 43210',
-    whatsapp: '+91 98765 43210',
-    reraId: 'RERA-NAG-2023-441',
-    territory: 'Nagpur Headquarters',
-    joinDate: 'Jan 15, 2023',
-    photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200'
+    ...(currentUser || {}),
+    role: userRole || currentUser?.role,
+    joinDate: currentUser?.joinDate ? new Date(currentUser.joinDate).toLocaleDateString() : undefined,
   });
 
   const stats = useMemo(() => {
