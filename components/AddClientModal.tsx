@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Client, ClientType, ClientStatus } from '../types';
+import { newId } from '../lib/id';
 
 interface AddClientModalProps {
   initialData?: Client;
@@ -139,7 +140,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ initialData, onClose, o
     }
     const finalClient: Client = {
       ...formData as Client,
-      id: formData.id || `CL-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: formData.id || newId('CL'),
       createdAt: formData.createdAt || new Date().toISOString(),
       agent: formData.agent || 'Rahul Singh'
     };

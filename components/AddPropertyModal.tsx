@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Property, PropertyConfiguration } from '../types';
+import { newId } from '../lib/id';
 
 interface AddPropertyModalProps {
   initialData?: Property;
@@ -36,7 +37,7 @@ const AddPropertyModal: React.FC<AddPropertyModalProps> = ({ initialData, onClos
   const floorPlanInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<Partial<Property>>(initialData || {
-    id: `P-${Math.floor(1000 + Math.random() * 9000)}`,
+    id: newId('P'),
     title: '',
     description: '',
     type: 'Apartment',

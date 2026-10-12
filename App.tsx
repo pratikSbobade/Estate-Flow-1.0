@@ -127,20 +127,28 @@ const AppContent: React.FC = () => {
     navigate('/');
   };
 
+  // Saves to Supabase first; only shows success if the database accepted it.
+  // On failure, shows the real error and reloads data so the screen matches the DB.
+  const saveToDb = async (table: string, rows: any[], okMessage: string) => {
+    const { error } = await supabase.from(table).upsert(rows);
+    if (error) {
+      console.error(`Save to ${table} failed:`, error);
+      alert(`Could not save to database: ${error.message}`);
+      await fetchData();
+      return false;
+    }
+    setSuccessMessage(okMessage);
+    return true;
+  };
+
   const handleAddVisit = async (newVisit: SiteVisit) => {
     setVisits(prev => [newVisit, ...prev]);
-    setSuccessMessage('Visit scheduled successfully.');
-    
-    const { error } = await supabase.from('site_visits').insert([newVisit]);
-    if (error) console.error("Failed to sync visit:", error);
+    await saveToDb('site_visits', [newVisit], 'Visit scheduled successfully.');
   };
 
   const handleUpdateVisit = async (updatedVisit: SiteVisit) => {
     setVisits(prev => prev.map(v => v.id === updatedVisit.id ? updatedVisit : v));
-    setSuccessMessage('Visit record updated.');
-
-    const { error } = await supabase.from('site_visits').upsert([updatedVisit]);
-    if (error) console.error("Failed to sync updated visit:", error);
+    await saveToDb('site_visits', [updatedVisit], 'Visit record updated.');
   };
 
   const handleAddClient = async (newClient: Client) => {
@@ -149,34 +157,25 @@ const AppContent: React.FC = () => {
       const exists = prev.find(c => c.id === newClient.id);
       return exists ? prev.map(c => c.id === newClient.id ? newClient : c) : [newClient, ...prev];
     });
-    setSuccessMessage('Client profile saved.');
-
-    try {
-      const { interactions, ...payload } = newClient;
-      const { error } = await supabase.from('clients').upsert([payload]);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Database Sync Error:', error);
-    }
+    // interactions (call logs) are saved in the clients.interactions column
+    await saveToDb('clients', [{ ...newClient, interactions: newClient.interactions || [] }], 'Client profile saved.');
   };
 
   const handleSaveProperty = async (property: Property) => {
     setIsAddPropertyOpen(false);
     setEditingProperty(undefined);
-    
     setProperties(prev => {
       const exists = prev.find(p => p.id === property.id);
       return exists ? prev.map(p => p.id === property.id ? property : p) : [property, ...prev];
     });
-    
-    setSuccessMessage('Property details updated successfully.');
+    await saveToDb('properties', [property], 'Property details updated successfully.');
+  };
 
-    try {
-      const { error } = await supabase.from('properties').upsert([property]);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Property Database Sync Error:', error);
-    }
+  const handleBulkImport = async (type: 'Clients' | 'Properties' | 'Visits', data: any[]) => {
+    if (!data.length) return;
+    const table = type === 'Clients' ? 'clients' : type === 'Properties' ? 'properties' : 'site_visits';
+    const ok = await saveToDb(table, data, `${data.length} ${type.toLowerCase()} imported.`);
+    if (ok) await fetchData();
   };
 
   const handleHeaderAdd = () => {
@@ -216,7 +215,7 @@ const AppContent: React.FC = () => {
           <Route path="/properties" element={<PropertiesPage properties={properties} clients={clients} searchQuery={searchQuery} onAddProperty={() => { setEditingProperty(undefined); setIsAddPropertyOpen(true); }} onEditProperty={(p) => { setEditingProperty(p); setIsAddPropertyOpen(true); }} onAddVisit={handleAddVisit} checkPermission={checkPermission} />} />
           <Route path="/profile" element={<ProfilePage clients={clients} properties={properties} visits={visits} allUsers={fullUserRegistry} checkPermission={checkPermission} userRole={currentUser?.role} onSignOut={handleSignOut} />} />
           <Route path="/emi" element={<EmiCalculator />} />
-          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={() => {}} onApproveUser={() => {}} checkPermission={checkPermission} />} />
+          <Route path="/admin" element={<AdminPanel userRole={currentUser?.role || ''} clients={clients} properties={properties} visits={visits} pendingUsers={fullUserRegistry.filter(u => u.approvalStatus === 'Pending')} onBulkImport={handleBulkImport} onApproveUser={() => {}} checkPermission={checkPermission} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

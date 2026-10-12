@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Property, Client, SiteVisit } from '../types';
+import { newId } from '../lib/id';
 
 interface BookVisitModalProps {
   property?: Property;
@@ -32,7 +33,7 @@ const BookVisitModal: React.FC<BookVisitModalProps> = ({
     if (!selProperty || !selClient || !visitDate) return;
 
     const newVisit: SiteVisit = {
-      id: `SV-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: newId('SV'),
       clientId: selClient.id,
       clientName: `${selClient.firstName} ${selClient.lastName}`,
       propertyId: selProperty.id,

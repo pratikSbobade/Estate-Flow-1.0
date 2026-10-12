@@ -5,6 +5,7 @@ import {
   Cell 
 } from 'recharts';
 import { UserProfile, Client, Property, SiteVisit, WhatsAppTemplate, CustomRole, ResourceAction, ResourceType, RolePermissions } from '../types';
+import { newId } from '../lib/id';
 
 interface AdminPanelProps {
   clients: Client[];
@@ -164,7 +165,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           obj[h] = values[i];
         });
         if (importType === 'Clients') {
-          obj.id = `CL-IMP-${Math.floor(Math.random() * 10000)}`;
+          obj.id = newId('CL');
           obj.createdAt = new Date().toISOString();
           obj.budgetMin = Number(obj.budgetMin) || 0;
           obj.budgetMax = Number(obj.budgetMax) || 10000000;
@@ -172,11 +173,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           obj.locations = [obj.address];
           obj.configuration = ['2BHK'];
         } else if (importType === 'Properties') {
-          obj.id = `P-IMP-${Math.floor(Math.random() * 10000)}`;
+          obj.id = newId('P');
           obj.financials = { priceMin: Number(obj.priceMin) || 0, priceMax: Number(obj.priceMax) || 0 };
           obj.location = { area: obj.area, city: obj.city };
+          obj.legal = { reraId: obj.reraId };
+          obj.status = obj.status || 'Available';
+          // These CSV-only fields have no matching DB column; keep them nested only
+          delete obj.area; delete obj.city; delete obj.priceMin; delete obj.priceMax; delete obj.reraId;
         } else {
-          obj.id = `SV-IMP-${Math.floor(Math.random() * 10000)}`;
+          obj.id = newId('SV');
         }
         return obj;
       });
